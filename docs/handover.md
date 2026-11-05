@@ -8,11 +8,14 @@ than guessed, with a named owner for the gap.
 
 ## 0. Enable GitHub Pages on the repository
 
-In the repository's **Settings → Pages**, set the build and deployment source
-to **GitHub Actions**. Nothing deploys until this is switched on, and it is a
-repository setting no workflow can set for itself. This is a one-off, and it
-is needed before step 1 — the demo-mode site goes live from this alone, with
-no Auth0 and no Apps Script endpoint in existence yet.
+**Already done — nothing to do here.** Recorded because it is a repository
+setting no workflow can set for itself, and because it is the first thing to
+check if a deploy ever stops arriving: in **Settings → Pages**, the build and
+deployment source must be **GitHub Actions**. It was already set that way when
+the foundation was pushed, and the demo-mode site went live from that alone,
+with no Auth0 application and no Apps Script endpoint in existence:
+
+<https://klindic.github.io/hair-saloon/>
 
 ## 1. Create the Google Sheet
 
