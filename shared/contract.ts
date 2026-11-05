@@ -87,27 +87,49 @@ export type AvailabilityResult = AvailabilityResponse | ErrorResponse;
 export type BookResult = BookSuccessResponse | ErrorResponse;
 export type EndpointResult = AvailabilityResult | BookResult;
 
-// Idempotency replay rule, precisely: a request whose booking_id, verified email, and slot
-// (both slot_start and slot_end) all match an existing row returns that row's original
-// BookSuccessResponse again and writes nothing new. A request whose booking_id and verified
-// email match an existing row but whose slot differs returns the 'invalid_request' error code —
-// the same id cannot be reused to mean a different booking. A booking_id that matches an existing
-// row whose verified email is different also returns 'invalid_request', never a second row with
-// the same id: booking_id is client-supplied, so two different customers can collide on it by
-// accident or by a buggy client, and the lookup must never fall through to "no match, write a
-// new row" on an id the sheet already uses as its de-facto key. A booking_id that is not a
-// well-formed UUID also returns 'invalid_request'; it is never treated as a fresh booking with a
-// garbage key. "Well-formed" here means the canonical 8-4-4-4-12 hyphenated lowercase hex string
-// — what `crypto.randomUUID()` produces — matched case-insensitively; any UUID version is
-// accepted, since this field is a comparison key, not a version-sensitive identifier.
+// Idempotency replay rule, precisely: a replay is recognised only when a request's booking_id
+// matches an existing row AND every other field in the request also matches that row — verified
+// email, slot_start and slot_end (compared by instant via Date.parse, the same comparison
+// rangesOverlap and isInPast already use in apps-script/src/domain/slots.ts, never by string
+// equality), service_id, customer_name, and notes (a missing notes field and an empty string
+// count as the same value). Only a full match returns that row's original BookSuccessResponse
+// again and writes nothing new.
 //
-// On replay (when booking_id, verified email, and slot all match): the backend returns the
-// original BookSuccessResponse with status: 'requested', even if the row has since been confirmed
-// or cancelled by hand in the sheet. This response is a receipt for the write that happened, never
-// a live read of the row's current state. The product deliberately has no endpoint for checking a
-// booking's current status; letting a replay response report the row's live status would reinstate
-// exactly that lookup through a side door. The sheet is the only place a booking's real current
-// status is visible.
+// This is deliberately stricter than "the slot and email are enough": a request whose booking_id
+// matches an existing row but that differs in any other field — a different slot, a different
+// service, a different customer name, different notes, or a different verified email — returns
+// 'invalid_request', never a silent "original success" for a booking the sheet does not actually
+// hold. The same id cannot be reused to mean a different booking. This matters because
+// BookSuccessResponse echoes only booking_id, status and the slot, so a looser match (say, slot
+// and email alone) would let a customer who edited the form before a client bug resent an
+// already-minted id be told "booked" for a service or name the row never recorded, with nothing
+// in the response revealing the mismatch. A client only ever reuses a booking_id to retry the
+// literal, byte-identical resend of one attempt (see T-08); a fresh UUID is minted for every new
+// booking attempt and is never reused across an edited resubmission.
+//
+// The booking_id comparison itself is an exact, case-sensitive string match. Case-insensitivity
+// applies only to the well-formedness check below, not to the lookup — a client that varies the
+// case of its own id between attempts is a client bug, not something this rule accommodates.
+//
+// Two different customers can collide on the same booking_id by accident or by a buggy client,
+// since booking_id is client-supplied; that collision is one instance of the general
+// "differs in some field" case above (the verified email differs), and the lookup must never
+// fall through to "no match, write a new row" on an id the sheet already uses as its de-facto
+// key.
+//
+// A booking_id that is not a well-formed UUID also returns 'invalid_request'; it is never treated
+// as a fresh booking with a garbage key. "Well-formed" here means the canonical 8-4-4-4-12
+// hyphenated lowercase hex string — what `crypto.randomUUID()` produces — matched
+// case-insensitively; any UUID version is accepted, since this field is a comparison key, not a
+// version-sensitive identifier.
+//
+// On a recognised replay, the backend returns the original BookSuccessResponse with
+// status: 'requested', even if the row has since been confirmed or cancelled by hand in the
+// sheet. This response is a receipt for the write that happened, never a live read of the row's
+// current state. The product deliberately has no endpoint for checking a booking's current
+// status; letting a replay response report the row's live status would reinstate exactly that
+// lookup through a side door. The sheet is the only place a booking's real current status is
+// visible.
 //
 // A same-booking_id collision from one customer is expected client behaviour, not a rare edge
 // case: the frontend retries once automatically after a timeout, using the same booking_id, when
