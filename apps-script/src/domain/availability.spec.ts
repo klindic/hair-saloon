@@ -102,6 +102,14 @@ describe('availabilityFor', () => {
     expect(result).toEqual({ ok: true, date: '2026-11-07', busy: [] });
   });
 
+  // status is a column the owner edits by hand, unlike every other column this function reads -
+  // the comparison tolerates the casing and whitespace a human actually types.
+  it('excludes a cancelled row even when the owner typed it with different casing or trailing space', () => {
+    const rows = [row({ status: 'Cancelled' }), row({ status: 'cancelled ' })];
+    const result = availabilityFor('2026-11-07', rows, unusedZone);
+    expect(result).toEqual({ ok: true, date: '2026-11-07', busy: [] });
+  });
+
   it('excludes a row on a different date', () => {
     const result = availabilityFor(
       '2026-11-07',
@@ -167,11 +175,36 @@ describe('availabilityFor', () => {
     expect(result.error).toBe('invalid_request');
   });
 
+  // The bug this closes: created_at is metadata nobody reads back from an existing row, so a
+  // blank or garbage cell there must never cost a real, otherwise-good booking its visibility -
+  // unlike slot_start/slot_end, which the filter cannot work at all without.
+  it('includes a requested row with a blank created_at, rather than excluding it', () => {
+    const rows = [row({ createdAt: '' })];
+    const result = availabilityFor('2026-11-07', rows, unusedZone);
+    expect(result).toEqual({
+      ok: true,
+      date: '2026-11-07',
+      busy: [{ start: '2026-11-07T10:00:00+01:00', end: '2026-11-07T10:45:00+01:00' }],
+    });
+  });
+
+  it('includes a requested row with a non-string, non-Date created_at, rather than excluding it', () => {
+    const rows = [row({ createdAt: 42 })];
+    const result = availabilityFor('2026-11-07', rows, unusedZone);
+    expect(result).toEqual({
+      ok: true,
+      date: '2026-11-07',
+      busy: [{ start: '2026-11-07T10:00:00+01:00', end: '2026-11-07T10:45:00+01:00' }],
+    });
+  });
+
   // A single bad cell anywhere in the tab must not turn the whole day into an error: it must
   // exclude only the row it came from, and leave every other row in the same snapshot intact.
-  it('excludes a cancelled row with an unparseable cell elsewhere, rather than failing the request', () => {
+  // created_at can no longer be the "bad cell" here (see above), so these use slot_start/slot_end,
+  // the only fields that can still fail to parse.
+  it('excludes a cancelled row even when its own slot cells are unparseable, rather than failing the request', () => {
     const rows = [
-      row({ status: 'cancelled', createdAt: 42 }),
+      row({ status: 'cancelled', slotStart: 42, slotEnd: 42 }),
       row({ slotStart: '2026-11-07T09:00:00+01:00', slotEnd: '2026-11-07T09:30:00+01:00' }),
     ];
     const result = availabilityFor('2026-11-07', rows, unusedZone);
@@ -195,8 +228,11 @@ describe('availabilityFor', () => {
     });
   });
 
-  it('excludes every row when every row is unparseable, rather than throwing', () => {
-    const rows = [row({ slotStart: 42, slotEnd: 42 }), row({ createdAt: 42 })];
+  it('excludes every row when every row has an unparseable slot cell, rather than throwing', () => {
+    const rows = [
+      row({ slotStart: 42, slotEnd: 42 }),
+      row({ slotStart: 'garbage', slotEnd: 'garbage' }),
+    ];
     const result = availabilityFor('2026-11-07', rows, unusedZone);
     expect(result).toEqual({ ok: true, date: '2026-11-07', busy: [] });
   });
@@ -225,6 +261,21 @@ describe('availabilityFor', () => {
         expect(busyRange.end.endsWith('Z')).toBe(false);
       }
     }
+  });
+
+  // A zone returning 'Z' is exactly what a misconfigured script timezone (UTC/GMT instead of the
+  // manifest's pinned zone) produces. It must not be read back as "nothing is booked": it has to
+  // surface as a thrown error, which `main.ts`'s `doGet` turns into `internal_error`, never as
+  // `ok: true` with every row silently excluded.
+  it('throws rather than returning ok:true when the zone returns an unparseable offset', () => {
+    const rows = [
+      row({
+        slotStart: new Date('2026-11-07T09:00:00Z'),
+        slotEnd: new Date('2026-11-07T09:45:00Z'),
+      }),
+    ];
+    const brokenZone: Zone = { offsetFor: () => 'Z' };
+    expect(() => availabilityFor('2026-11-07', rows, brokenZone)).toThrow();
   });
 
   it('excludes a Date-shaped row that converts to a different date', () => {

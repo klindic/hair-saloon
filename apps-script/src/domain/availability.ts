@@ -1,5 +1,5 @@
 import type { AvailabilityResult, BookingRow, BusyRange } from '@contract/contract';
-import { parseBookingRow, type BookingsRepo, type Zone } from './bookings-repo';
+import { parseBookingRow, ZoneOffsetError, type BookingsRepo, type Zone } from './bookings-repo';
 
 const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -31,13 +31,23 @@ export function isValidCalendarDate(date: string): boolean {
  * of the sheet and a caller can safely pass a value that is not really a snapshot when the date
  * alone is what is under test.
  *
- * A row that fails to parse - a cell the owner typed over by hand, a stray value in a column this
- * endpoint does not even use - is excluded rather than allowed to fail the whole request. The
- * alternative is one bad cell anywhere in the tab turning every customer's "what's free today"
- * into an error page. Excluding it instead can only ever widen what looks available, never narrow
- * it, and an excluded row that was genuinely booked is exactly the case the locked write path
- * already exists to catch: the customer picks it, the lock sees the real row, and they get
- * `slot_taken` instead of a confirmation - degraded, not unsafe.
+ * A row that fails to parse is excluded rather than allowed to fail the whole request - one bad
+ * cell anywhere in the tab must not turn every customer's "what's free today" into an error page.
+ * That can only ever widen what looks available, never narrow it, which is why `created_at` is
+ * deliberately *not* one of the ways a row can fail to parse: `readCreatedAt` never throws (see
+ * `bookings-repo.ts`), because that column is never read back from an existing row by anything,
+ * this endpoint included, so a blank or malformed `created_at` must not cost a real booking its
+ * visibility. The only way `parseBookingRow` can still throw here is `slot_start` or `slot_end`
+ * itself being unparseable - the exact fields this endpoint and the write path's own overlap check
+ * both need to evaluate the row at all. An excluded row like that is exactly the
+ * case the locked write path already exists to catch: the customer picks it, the lock re-reads the
+ * real row, and they get `slot_taken` instead of a confirmation - degraded, not unsafe.
+ *
+ * A `ZoneOffsetError` is not one of those bad cells and is never excluded: it means the zone
+ * itself is misconfigured, so every `Date`-typed row would fail the same way and "every row
+ * excluded" would otherwise read back as the dishonest `ok: true, busy: []` - a calendar that
+ * looks wide open because the infrastructure under it is broken. It is left to propagate so the
+ * caller (`main.ts`'s `doGet`) reports it as `internal_error` instead.
  */
 export function availabilityFor(
   date: string,
@@ -57,10 +67,18 @@ export function availabilityFor(
     let row: BookingRow;
     try {
       row = parseBookingRow(raw, zone);
-    } catch {
+    } catch (error) {
+      if (error instanceof ZoneOffsetError) {
+        // A zone that cannot be parsed is an infrastructure failure, not bad row data: it must
+        // reach doGet's catch as internal_error, never be read back as "nothing is booked".
+        throw error;
+      }
       continue;
     }
-    if (row.status === 'cancelled') {
+    // The owner types this cell by hand, so the comparison tolerates the casing and stray
+    // whitespace a human actually produces ('Cancelled', 'cancelled ') rather than only the exact
+    // lowercase literal the contract pins for what the app itself writes.
+    if (row.status.trim().toLowerCase() === 'cancelled') {
       continue;
     }
     if (row.slot_start.slice(0, 10) !== date) {
