@@ -58,7 +58,13 @@ export interface BookSuccessResponse {
   // this value is to recognise it on replay; it is not a source of new ids.
   booking_id: string;
   // Only ever 'requested' from this endpoint, never 'confirmed': v1 promises a recorded request
-  // that the salon confirms by hand in the sheet.
+  // that the salon confirms by hand in the sheet. This holds on replay too: if the owner has
+  // since confirmed or cancelled the row by hand, a request replaying that row's booking_id still
+  // gets status: 'requested' back, unconditionally. This response is a receipt for the write that
+  // happened, never a live read of the row's current state — this product deliberately has no
+  // endpoint for checking a booking's current status (see the idempotency rule above), and
+  // letting replay report the row's live status would reinstate exactly that lookup through a
+  // side door. The owner's sheet is the only place a booking's real current status is visible.
   status: 'requested';
   slot_start: string; // echo of the requested slot
   slot_end: string; // echo of the requested slot
@@ -90,9 +96,15 @@ export type EndpointResult = AvailabilityResult | BookResult;
 // (both slot_start and slot_end) all match an existing row returns that row's original
 // BookSuccessResponse again and writes nothing new. A request whose booking_id and verified
 // email match an existing row but whose slot differs returns the 'invalid_request' error code —
-// the same id cannot be reused to mean a different booking. A booking_id that is not a
+// the same id cannot be reused to mean a different booking. A booking_id that matches an existing
+// row whose verified email is different also returns 'invalid_request', never a second row with
+// the same id: booking_id is client-supplied, so two different customers can collide on it by
+// accident or by a buggy client, and the lookup must never fall through to "no match, write a
+// new row" on an id the sheet already uses as its de-facto key. A booking_id that is not a
 // well-formed UUID also returns 'invalid_request'; it is never treated as a fresh booking with a
-// garbage key.
+// garbage key. "Well-formed" here means the canonical 8-4-4-4-12 hyphenated lowercase hex string
+// — what `crypto.randomUUID()` produces — matched case-insensitively; any UUID version is
+// accepted, since this field is a comparison key, not a version-sensitive identifier.
 //
 // A same-booking_id collision from one customer is expected client behaviour, not a rare edge
 // case: the frontend retries once automatically after a timeout, using the same booking_id, when

@@ -79,7 +79,11 @@ Saturday should be loses them.
 
 **Write path.** A POST carries the Auth0 access token. The backend derives the customer's email
 from that verified token and ignores any email in the request body, takes a `LockService` lock,
-re-reads the sheet, and either writes exactly one row or returns a `slot_taken` rejection.
+re-reads the sheet, and either writes exactly one row, returns a `slot_taken` rejection, or
+replays the original success and writes nothing if a request with a matching `booking_id`, verified
+email, and slot reappears (the idempotency rule for retries; see the replay-rule comment above
+`SALON_TIMEZONE` in `shared/contract.ts` for the precise rule, including the status-on-replay
+decision).
 Authentication sits on the write path only, never the read path: Apps Script has no RSA-verify
 primitive, so the token is checked by calling Auth0's `/userinfo` endpoint, and Auth0's free tier
 rate-limits `/userinfo` to 5 sustained and 10 burst requests per minute per user. Every page view
