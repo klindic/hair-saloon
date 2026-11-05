@@ -75,13 +75,19 @@ function reconstructFromInstant(instant: Date, zone: Zone): string {
  * written: it goes through the same instant-based recovery as a `Date`, so the zone - not the
  * cell - decides the offset that ends up in the response. A string `Date` cannot parse at all
  * throws, the same as any other value this function cannot make sense of.
+ *
+ * A space between the date and time portions is normalised to 'T' before parsing. `Date`'s own
+ * constructor accepts a space there on V8 (Node and Apps Script's runtime alike), but that
+ * leniency is implementation-defined, not something the language guarantees - normalising first
+ * means the actual parse is always the one spec-defined ISO form, on any engine.
  */
 export function toSlotIso(value: unknown, zone: Zone): string {
   if (typeof value === 'string') {
     if (EXPLICIT_OFFSET_ISO.test(value)) {
       return value;
     }
-    const parsed = new Date(value);
+    const normalized = value.replace(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})/, '$1T$2');
+    const parsed = new Date(normalized);
     if (Number.isNaN(parsed.getTime())) {
       throw new Error(`Expected an ISO-8601 datetime, got the unparseable string "${value}"`);
     }
