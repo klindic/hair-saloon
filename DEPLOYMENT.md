@@ -70,11 +70,11 @@ file, `src/assets/config.json`, fetched by `ConfigService` after the app loads, 
 artefact serves both the demo deployment and the CEO's eventual live deployment; only the contents
 of that file differ. It ships with three keys present and blank:
 
-| Key             | What it is                                             | Where its value comes from     |
-| ---------------- | ------------------------------------------------------ | ------------------------------- |
-| `auth0Domain`    | The Auth0 tenant domain                                 | Auth0 application settings      |
-| `auth0ClientId`  | The Auth0 SPA application's client ID                  | Auth0 application settings      |
-| `apiBaseUrl`     | The deployed Apps Script web app's `/exec` URL          | Apps Script deployment screen    |
+| Key             | What it is                                     | Where its value comes from    |
+| --------------- | ---------------------------------------------- | ----------------------------- |
+| `auth0Domain`   | The Auth0 tenant domain                        | Auth0 application settings    |
+| `auth0ClientId` | The Auth0 SPA application's client ID          | Auth0 application settings    |
+| `apiBaseUrl`    | The deployed Apps Script web app's `/exec` URL | Apps Script deployment screen |
 
 None of these three is a secret: they are a tenant name, a public SPA client identifier (Auth0 SPA
 clients ship no client secret, by design of the PKCE flow), and a URL. While any of the three is
