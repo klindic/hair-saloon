@@ -43,7 +43,7 @@ const PATTERNS = [
   // Matches the key:value pair regardless of quote style or spacing, so a minified or
   // differently-formatted service-account JSON still trips this (e.g. esbuild inlining a JSON
   // import as `{type:"service_account"}` rather than `{"type": "service_account"}`).
-  ['service-account type marker', /['"]?type['"]?\s*:\s*['"]service_account['"]/g],
+  ['service-account type marker', /['"]?type['"]?[ \t]*:[ \t]*['"]service_account['"]/g],
 ];
 
 const LITERAL_MARKERS = [['service-account private-key marker', '-----BEGIN PRIVATE KEY-----']];
