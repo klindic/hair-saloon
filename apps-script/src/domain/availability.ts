@@ -1,4 +1,4 @@
-import type { AvailabilityResult, BusyRange } from '@contract/contract';
+import type { AvailabilityResult, BookingRow, BusyRange } from '@contract/contract';
 import { parseBookingRow, type BookingsRepo, type Zone } from './bookings-repo';
 
 const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
@@ -30,6 +30,14 @@ export function isValidCalendarDate(date: string): boolean {
  * immediately, without a single read of `snapshot`, so a malformed request never pays for a scan
  * of the sheet and a caller can safely pass a value that is not really a snapshot when the date
  * alone is what is under test.
+ *
+ * A row that fails to parse - a cell the owner typed over by hand, a stray value in a column this
+ * endpoint does not even use - is excluded rather than allowed to fail the whole request. The
+ * alternative is one bad cell anywhere in the tab turning every customer's "what's free today"
+ * into an error page. Excluding it instead can only ever widen what looks available, never narrow
+ * it, and an excluded row that was genuinely booked is exactly the case the locked write path
+ * already exists to catch: the customer picks it, the lock sees the real row, and they get
+ * `slot_taken` instead of a confirmation - degraded, not unsafe.
  */
 export function availabilityFor(
   date: string,
@@ -46,7 +54,12 @@ export function availabilityFor(
 
   const busy: BusyRange[] = [];
   for (const raw of snapshot) {
-    const row = parseBookingRow(raw, zone);
+    let row: BookingRow;
+    try {
+      row = parseBookingRow(raw, zone);
+    } catch {
+      continue;
+    }
     if (row.status === 'cancelled') {
       continue;
     }
