@@ -19,10 +19,10 @@ push to `main`:
 
 1. `npm ci` on the Node version pinned in `.nvmrc`.
 2. `npm run verify` — lint, format check, typecheck (app, specs, Apps Script, e2e), the sheet/
-   contract check, the Angular unit tests, the Apps Script unit tests, the Apps Script bundle
-   build, the production build, and the Pages build check. This is the exact command an engineer
-   runs before opening a pull request — CI has no separate step list, so "green locally" and
-   "green in CI" cannot drift apart.
+   contract check, the contrast check, the Angular unit tests, the Apps Script unit tests, the
+   Apps Script bundle build, the production build, and the Pages build check. This is the exact
+   command an engineer runs before opening a pull request — CI has no separate step list, so
+   "green locally" and "green in CI" cannot drift apart.
 3. `npx playwright install --with-deps chromium`, then `npm run test:e2e` — the Playwright suite
    against the real built bundle served the way Pages serves it, not against the dev server.
 4. On failure, the Playwright HTML report is uploaded as a build artefact for 7 days.
@@ -70,11 +70,11 @@ file, `src/assets/config.json`, fetched by `ConfigService` after the app loads, 
 artefact serves both the demo deployment and the CEO's eventual live deployment; only the contents
 of that file differ. It ships with three keys present and blank:
 
-| Key             | What it is                                             | Where its value comes from     |
-| ---------------- | ------------------------------------------------------ | ------------------------------- |
-| `auth0Domain`    | The Auth0 tenant domain                                 | Auth0 application settings      |
-| `auth0ClientId`  | The Auth0 SPA application's client ID                  | Auth0 application settings      |
-| `apiBaseUrl`     | The deployed Apps Script web app's `/exec` URL          | Apps Script deployment screen    |
+| Key             | What it is                                     | Where its value comes from    |
+| --------------- | ---------------------------------------------- | ----------------------------- |
+| `auth0Domain`   | The Auth0 tenant domain                        | Auth0 application settings    |
+| `auth0ClientId` | The Auth0 SPA application's client ID          | Auth0 application settings    |
+| `apiBaseUrl`    | The deployed Apps Script web app's `/exec` URL | Apps Script deployment screen |
 
 None of these three is a secret: they are a tenant name, a public SPA client identifier (Auth0 SPA
 clients ship no client secret, by design of the PKCE flow), and a URL. While any of the three is

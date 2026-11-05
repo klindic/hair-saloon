@@ -58,6 +58,7 @@ Four engineers working in parallel need this to be a lookup, not a judgement cal
 - A routed page → `src/app/features/<name>/<name>-page.ts`. Features never import each other.
 - Something two features both need → `src/app/core/`. Core never imports a feature.
 - A wire shape, an error code, a sheet column → `shared/contract.ts`, and nowhere else.
+- A colour, space, radius or type size → `docs/design/tokens.md`, and nowhere else.
 - Salon data the slot grid needs (services, opening hours) → `src/data/`, compiled into the
   bundle. Changing it is a commit; see `src/data/README.md`.
 - Something fetched at runtime → `src/assets/`. Only `config.json` and demo fixtures belong there.
@@ -66,9 +67,9 @@ Four engineers working in parallel need this to be a lookup, not a judgement cal
 
 ## Before you open a pull request
 
-Run `npm run verify`. It is lint, format:check, typecheck, check:contract, unit tests, Apps Script
-tests, the Apps Script bundle and the build, and it is the same script CI runs — so a green
-`verify` locally and a green CI mean the same thing. `npm run verify:all` adds Playwright, which
+Run `npm run verify`. It is lint, format:check, typecheck, check:contract, check:contrast, unit tests,
+Apps Script tests, the Apps Script bundle and the build, and it is the same script CI runs — so a
+green `verify` locally and a green CI mean the same thing. `npm run verify:all` adds Playwright, which
 is worth it if you touched routing, the build or anything the browser loads.
 
 Do not claim a check passed that you did not watch pass. If something is broken and you are
