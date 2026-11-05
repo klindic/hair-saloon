@@ -1,0 +1,130 @@
+# Sheet template
+
+This is the exact definition of the Google Sheet the CEO owns. It is the
+database for the booking system: build it with these three tabs, these
+column headers, in this order, and nothing else needs adding for v1.
+
+The column names below are the same names used in the frozen frontend/backend
+contract at `shared/contract.ts`. If a value here and that file ever
+disagree, `shared/contract.ts` is the source of truth and this file is out of
+date — and `npm run check:contract` fails, because it compares the tables
+below against the `BOOKINGS_COLUMNS` and `SERVICES_COLUMNS` constants in that
+file and against the tab names in `SHEET_TAB_NAMES`. Nobody has to notice the
+drift by eye.
+
+## Tab 1: `Bookings`
+
+Header row, columns A–J, in this exact order:
+
+| #   | Column           | Type                                         | Example                          | Who writes it                                                                  |
+| --- | ---------------- | -------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------ |
+| A   | `booking_id`     | string                                       | `bk_8f2c1a3e`                    | App — generated when the row is written                                        |
+| B   | `created_at`     | ISO 8601 + UTC offset                        | `2026-11-05T14:37:02+01:00`      | App — timestamp at the moment the row is written                               |
+| C   | `slot_start`     | ISO 8601 + UTC offset                        | `2026-11-06T10:00:00+01:00`      | App — echoed from the booking request                                          |
+| D   | `slot_end`       | ISO 8601 + UTC offset                        | `2026-11-06T10:30:00+01:00`      | App — echoed from the booking request                                          |
+| E   | `service_id`     | string, matches `Services.id`                | `svc_cut_wash`                   | App — from the booking request                                                 |
+| F   | `stylist`        | string, constant                             | `Jana`                           | App — a fixed value configured in the script                                   |
+| G   | `customer_name`  | string                                       | `Maria Petrović`                 | App — from the booking request                                                 |
+| H   | `customer_email` | string                                       | `maria@example.com`              | App — from the verified Auth0 token, never the request body                    |
+| I   | `status`         | one of `requested`, `confirmed`, `cancelled` | `requested`                      | App writes `requested` only; owner edits to `confirmed` or `cancelled` by hand |
+| J   | `notes`          | string, optional                             | `First visit, patch test needed` | App — optional free text from the booking request                              |
+
+Notes on individual columns:
+
+- `created_at`, `slot_start` and `slot_end` must always carry an explicit UTC
+  offset, not a bare date-time. A date-time with no offset is ambiguous the
+  moment the salon is near a daylight-saving change.
+- `status` only ever leaves the app as `requested`. Moving a row to
+  `confirmed` (after the owner has called or texted the customer to confirm)
+  or to `cancelled` is a manual edit the owner makes directly in the sheet.
+  That manual edit is the entire owner workflow in v1 — there is no button
+  for it anywhere in the app.
+- `stylist` is a single constant for every row because v1 assumes one salon,
+  one stylist, one chair. The column exists so that supporting a second
+  stylist later is a configuration change and a new column of logic, not a
+  schema migration.
+- `customer_email` is never taken from the booking request body. The backend
+  derives it from the verified Auth0 token so a customer cannot book under
+  someone else's email address.
+
+## Tab 2: `Services`
+
+Header row, columns A–D, in this exact order:
+
+| #   | Column             | Type             | Example        | Who writes it            |
+| --- | ------------------ | ---------------- | -------------- | ------------------------ |
+| A   | `id`               | string           | `svc_cut_wash` | Owner — typed in by hand |
+| B   | `name`             | string           | `Cut & Wash`   | Owner — typed in by hand |
+| C   | `price`            | number           | `35`           | Owner — typed in by hand |
+| D   | `duration_minutes` | integer, minutes | `30`           | Owner — typed in by hand |
+
+The app never writes to this tab. A booking's `service_id` (Bookings column
+E) is expected to match an `id` in this tab.
+
+The frontend builds its slot grid from service durations compiled into the
+build, not by reading this tab live at request time: that is what lets the
+grid paint before any network call returns.
+
+**Nothing syncs this tab into the app, by decision.** The data the site
+actually uses lives in `src/data/services.json` in this repository. This tab
+is the owner's own record of the same facts. If they disagree, the site shows
+`src/data/services.json`, and changing a price on the site is a commit and a
+deploy rather than a spreadsheet edit. See the "Data model" section of
+`ARCHITECTURE.md` for why, and what it would cost to change.
+
+## Tab 3: `Hours and Closures`
+
+This tab holds two small tables side by side, both typed in by the owner by
+hand. Nothing in this tab is written by the app.
+
+**Weekly hours**, columns A–C, in this exact order:
+
+| #   | Column    | Type                          | Example  |
+| --- | --------- | ----------------------------- | -------- |
+| A   | `weekday` | one of `Monday`…`Sunday`      | `Monday` |
+| B   | `open`    | `HH:mm`, 24-hour, or `closed` | `09:00`  |
+| C   | `close`   | `HH:mm`, 24-hour, or `closed` | `19:00`  |
+
+One row per weekday, Monday through Sunday. Worked example for a closed day:
+
+| weekday | open     | close    |
+| ------- | -------- | -------- |
+| Sunday  | `closed` | `closed` |
+
+**Dated closures**, columns E–F, in this exact order (column D is left blank
+as a spacer between the two tables):
+
+| #   | Column   | Type              | Example         |
+| --- | -------- | ----------------- | --------------- |
+| E   | `date`   | `YYYY-MM-DD`      | `2026-12-25`    |
+| F   | `reason` | string, free text | `Christmas Day` |
+
+One row per closed date. `reason` is for the owner's own memory — it is not
+read by the app. Worked example for a holiday:
+
+| date         | reason          |
+| ------------ | --------------- |
+| `2026-12-25` | `Christmas Day` |
+
+The same applies to this tab as to `Services`: nothing reads it
+automatically. The hours the site uses live in `src/data/hours.json`, keyed by
+lowercase weekday name, and a closed weekday is written there as
+`{ "open": null, "close": null }` — that is the convention the contract
+(`shared/contract.ts`, type `OpeningHours`) defines, and `closed` in both
+cells of this tab maps to it. Dated closures carry a `date` and a `reason`;
+the reason is never read by any logic and is never shown to a customer.
+
+## What the owner must not do
+
+- **Do not rename or reorder any column.** The app reads and writes these
+  tabs by column position and by these exact header names. A renamed or
+  reordered column makes the app write a booking into the wrong column, or
+  fail to find the column it expected and error out.
+- **Do not delete the header row.** The app assumes row 1 is headers and
+  data starts at row 2. Deleting the header row shifts data up one row, and
+  the next booking the app writes will overwrite row 1 or be read back in
+  the wrong place.
+- **Do not change the tab names.** The app opens each tab by its exact name
+  (`Bookings`, `Services`, `Hours and Closures`). Renaming a tab makes the
+  app unable to find it at all, and every read or write that touches that
+  tab fails.

@@ -1,0 +1,66 @@
+name: Deploy to GitHub Pages
+
+# Deploy reacts to CI finishing (workflow_run) rather than duplicating lint/test/build here, so
+# nothing reaches Pages that has not been through the same gate as a pull request.
+# workflow_dispatch is kept for a manual re-deploy without a new commit.
+#
+# The Pages base path lives in exactly one place: the `build:pages` script in package.json
+# (`--base-href /hair-saloon/`). It is not repeated here, so `npm run preview` locally serves the
+# same paths this job deploys.
+#
+# If that path ever changes — the repository is renamed, or transferred to another owner — the
+# Pages URL changes with it, and the Auth0 allowed callback URLs, allowed logout URLs and allowed
+# web origins must be updated in the same change. A stale Auth0 URL breaks login the moment the
+# new Pages URL goes live. See docs/handover.md.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # Builds with the Pages base href and writes 404.html (the deep-link fallback) and
+      # .nojekyll into the output. Both come from tools/pages-postbuild.mjs.
+      - run: npm run build:pages
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist/hair-saloon/browser
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

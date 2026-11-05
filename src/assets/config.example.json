@@ -1,0 +1,5 @@
+{
+  "auth0Domain": "your-tenant.eu.auth0.com",
+  "auth0ClientId": "your-auth0-spa-client-id",
+  "apiBaseUrl": "https://script.google.com/macros/s/your-deployment-id/exec"
+}

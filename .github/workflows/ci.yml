@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    env:
+      # Angular's Vitest-based unit-test builder and Playwright both read CI to run
+      # non-interactively and skip watch mode.
+      CI: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # Deliberately one step, not nine. `npm run verify` is the same command engineers run
+      # before opening a pull request, so CI and a developer's machine cannot disagree about what
+      # "verified" means. Add a check by editing the verify script in package.json, not this file
+      # — that is why the steps are not listed here.
+      #
+      # Note on script:build inside verify: it only proves the Apps Script bundle compiles.
+      # Pushing it to the CEO's Apps Script project needs clasp authenticated as the CEO's own
+      # Google account, and no credential for that account exists here, so no workflow may run
+      # `clasp login` or `clasp push`.
+      - run: npm run verify
+
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

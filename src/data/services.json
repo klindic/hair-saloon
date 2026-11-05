@@ -1,0 +1,38 @@
+[
+  {
+    "id": "haircut-classic",
+    "name": "Classic Haircut",
+    "price": 35,
+    "duration_minutes": 30
+  },
+  {
+    "id": "haircut-wash-style",
+    "name": "Wash, Cut & Style",
+    "price": 55,
+    "duration_minutes": 60
+  },
+  {
+    "id": "colour-full",
+    "name": "Full Colour",
+    "price": 95,
+    "duration_minutes": 120
+  },
+  {
+    "id": "colour-highlights",
+    "name": "Highlights",
+    "price": 110,
+    "duration_minutes": 150
+  },
+  {
+    "id": "beard-trim",
+    "name": "Beard Trim",
+    "price": 20,
+    "duration_minutes": 20
+  },
+  {
+    "id": "blow-dry",
+    "name": "Blow Dry",
+    "price": 30,
+    "duration_minutes": 45
+  }
+]
