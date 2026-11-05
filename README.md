@@ -31,7 +31,8 @@ npm run verify
 
 This is the one command every engineer runs before opening a pull request. It runs, in order:
 lint, format check, typecheck, the contract check, the Angular unit tests, the Apps Script unit
-tests, the Apps Script bundle build, the production build, and the Pages build check. If
+tests, the Apps Script bundle build, the production build, the Pages build check, and the bundle
+secret check. If
 `npm run verify` is green, the pull request is ready to open.
 
 `npm run verify:all` runs `npm run verify` and then the Playwright end-to-end suite on top. CI
@@ -42,25 +43,26 @@ the Playwright half yourself needs `npx playwright install chromium` once per ma
 
 ## Everyday commands
 
-| Command                  | Does                                                               |
-| ------------------------ | ------------------------------------------------------------------ |
-| `npm start`              | Serves the app locally with live reload (`ng serve`).              |
-| `npm run build`          | Production build, plus `index.html` to `404.html` and `.nojekyll`. |
-| `npm run build:pages`    | Same build, with `--base-href /hair-saloon/` for Pages.            |
-| `npm run preview`        | Builds for Pages and serves it like Pages — see below.             |
-| `npm run lint`           | Lints the whole repo with ESLint.                                  |
-| `npm run format`         | Formats the whole repo with Prettier, writing the changes.         |
-| `npm run format:check`   | Checks formatting without writing — what `verify` runs.            |
-| `npm run typecheck`      | Type-checks the app, the specs, the backend and e2e.               |
-| `npm run check:contract` | Checks the sheet template against the contract — see below.        |
-| `npm run check:pages`    | Builds for Pages and asserts base href, 404 fallback, asset paths. |
-| `npm test`               | Runs the Angular unit tests (`ng test`).                           |
-| `npm run test:script`    | Runs the Apps Script unit tests under Vitest, in Node.             |
-| `npm run test:e2e`       | Runs the Playwright end-to-end suite (see `e2e/README.md`).        |
-| `npm run verify`         | The required pre-pull-request gate — see above.                    |
-| `npm run verify:all`     | `verify` plus `test:e2e` — the same checks CI runs.                |
-| `npm run script:build`   | Bundles `apps-script/src/main.ts` into `apps-script/dist/Code.js`. |
-| `npm run script:push`    | Pushes `apps-script/dist` to the Apps Script project via `clasp`.  |
+| Command                    | Does                                                               |
+| -------------------------- | ------------------------------------------------------------------ |
+| `npm start`                | Serves the app locally with live reload (`ng serve`).              |
+| `npm run build`            | Production build, plus `index.html` to `404.html` and `.nojekyll`. |
+| `npm run build:pages`      | Same build, with `--base-href /hair-saloon/` for Pages.            |
+| `npm run preview`          | Builds for Pages and serves it like Pages — see below.             |
+| `npm run lint`             | Lints the whole repo with ESLint.                                  |
+| `npm run format`           | Formats the whole repo with Prettier, writing the changes.         |
+| `npm run format:check`     | Checks formatting without writing — what `verify` runs.            |
+| `npm run typecheck`        | Type-checks the app, the specs, the backend and e2e.               |
+| `npm run check:contract`   | Checks the sheet template against the contract — see below.        |
+| `npm run check:pages`      | Builds for Pages and asserts base href, 404 fallback, asset paths. |
+| `npm run check:no-secrets` | Scans the production bundle for embedded credentials.              |
+| `npm test`                 | Runs the Angular unit tests (`ng test`).                           |
+| `npm run test:script`      | Runs the Apps Script unit tests under Vitest, in Node.             |
+| `npm run test:e2e`         | Runs the Playwright end-to-end suite (see `e2e/README.md`).        |
+| `npm run verify`           | The required pre-pull-request gate — see above.                    |
+| `npm run verify:all`       | `verify` plus `test:e2e` — the same checks CI runs.                |
+| `npm run script:build`     | Bundles `apps-script/src/main.ts` into `apps-script/dist/Code.js`. |
+| `npm run script:push`      | Pushes `apps-script/dist` to the Apps Script project via `clasp`.  |
 
 `npm run preview` builds with the GitHub Pages base href and serves it at
 `http://localhost:4310/hair-saloon/` via `tools/serve-static.mjs`, behaving like Pages: any path
