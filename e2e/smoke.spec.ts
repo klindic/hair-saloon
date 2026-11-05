@@ -1,7 +1,8 @@
+// The demo-mode banner, the disabled sign-in control, and the day-picker/slot-grid/closed-day
+// flow are covered in booking-flow.spec.ts (T-07).
+//
 // Flows that belong here once their tickets land, not yet:
-// - demo-mode banner is present when config.json is absent or blank
-// - the sign-in control renders disabled until Auth0 config is present
-// - the slot grid paints from local opening hours before the busy-ranges GET resolves
+// - the busy-ranges GET dims slots the live sheet reports as taken, after the instant local paint
 // - the confirmation screen never says "confirmed" alone; it names the pending review step
 import { expect, test } from '@playwright/test';
 
