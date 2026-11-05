@@ -43,6 +43,23 @@ function offsetToMinutes(offset: string): number {
   return sign * (hours * 60 + minutes);
 }
 
+/** The exact shape a correctly-written cell has: no 'Z', no space, no milliseconds. */
+const EXPLICIT_OFFSET_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/;
+
+/**
+ * Shift `instant` by the zone's offset for that instant and read the result back with the UTC
+ * getters, which is what spells out salon-local wall-clock time without ever consulting the host
+ * machine's own timezone. Shared by every path that starts from a real instant rather than an
+ * already-correct string: a native `Date`, and a string whose shape needs recovering too.
+ */
+function reconstructFromInstant(instant: Date, zone: Zone): string {
+  const offset = zone.offsetFor(instant.toISOString());
+  const shifted = new Date(instant.getTime() + offsetToMinutes(offset) * MILLIS_PER_MINUTE);
+  const date = `${pad(shifted.getUTCFullYear(), 4)}-${pad(shifted.getUTCMonth() + 1, 2)}-${pad(shifted.getUTCDate(), 2)}`;
+  const time = `${pad(shifted.getUTCHours(), 2)}:${pad(shifted.getUTCMinutes(), 2)}:${pad(shifted.getUTCSeconds(), 2)}`;
+  return `${date}T${time}${offset}`;
+}
+
 /**
  * Recover the salon-local ISO-8601 string for a cell that should hold one.
  *
@@ -52,22 +69,26 @@ function offsetToMinutes(offset: string): number {
  * offset it was written with, so `toISOString()` would answer in UTC ('...T09:00:00.000Z') and
  * the browser would be told the salon is busy at the wrong wall-clock hour.
  *
- * The recovery: ask the zone which offset applies at that instant, shift the epoch by exactly
- * that many minutes, and read the shifted instant back with the *UTC* getters. Shifting first is
- * what makes the UTC getters spell out salon-local wall-clock time. The host machine's own
- * timezone is never consulted — `getHours()` and friends are deliberately not used, because this
- * must give the same answer on a developer's laptop as on Google's servers.
+ * A string is only trusted verbatim when it already has exactly the shape a correctly-written
+ * cell has (`EXPLICIT_OFFSET_ISO`) — a shape check, not just a `typeof`. A string that is close
+ * but not quite right (a 'Z' suffix, a space instead of 'T', milliseconds) is not published as
+ * written: it goes through the same instant-based recovery as a `Date`, so the zone - not the
+ * cell - decides the offset that ends up in the response. A string `Date` cannot parse at all
+ * throws, the same as any other value this function cannot make sense of.
  */
 export function toSlotIso(value: unknown, zone: Zone): string {
   if (typeof value === 'string') {
-    return value;
+    if (EXPLICIT_OFFSET_ISO.test(value)) {
+      return value;
+    }
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new Error(`Expected an ISO-8601 datetime, got the unparseable string "${value}"`);
+    }
+    return reconstructFromInstant(parsed, zone);
   }
   if (value instanceof Date) {
-    const offset = zone.offsetFor(value.toISOString());
-    const shifted = new Date(value.getTime() + offsetToMinutes(offset) * MILLIS_PER_MINUTE);
-    const date = `${pad(shifted.getUTCFullYear(), 4)}-${pad(shifted.getUTCMonth() + 1, 2)}-${pad(shifted.getUTCDate(), 2)}`;
-    const time = `${pad(shifted.getUTCHours(), 2)}:${pad(shifted.getUTCMinutes(), 2)}:${pad(shifted.getUTCSeconds(), 2)}`;
-    return `${date}T${time}${offset}`;
+    return reconstructFromInstant(value, zone);
   }
   throw new Error(`Expected a string or a Date in a datetime cell, got ${typeof value}`);
 }

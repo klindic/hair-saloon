@@ -19,8 +19,33 @@ describe('toSlotIso', () => {
     expect(toSlotIso('2026-11-07T10:00:00+01:00', unusedZone)).toBe('2026-11-07T10:00:00+01:00');
   });
 
-  it('passes a string through even when it is not a datetime at all', () => {
-    expect(toSlotIso('', unusedZone)).toBe('');
+  it('rejects an empty string rather than passing it through as a slot time', () => {
+    expect(() => toSlotIso('', fixedZone('+01:00'))).toThrow(/unparseable/);
+  });
+
+  it('rejects a string Date cannot parse at all, rather than passing it through', () => {
+    expect(() => toSlotIso('not a real date', fixedZone('+01:00'))).toThrow(/unparseable/);
+  });
+
+  // The shape check matters, not just typeof: a string that is *close* to the written shape -
+  // a 'Z' suffix, a space instead of 'T' - must not be published verbatim. It goes through the
+  // same instant-based recovery as a Date, so the zone decides the offset, not the cell.
+  it('recovers a Z-suffixed string instead of publishing it verbatim', () => {
+    expect(toSlotIso('2026-11-07T09:00:00Z', fixedZone('+01:00'))).toBe(
+      '2026-11-07T10:00:00+01:00'
+    );
+  });
+
+  it('recovers a space-separated string with its own offset, re-deriving the offset from the zone', () => {
+    expect(toSlotIso('2026-11-07 10:00:00+01:00', fixedZone('+01:00'))).toBe(
+      '2026-11-07T10:00:00+01:00'
+    );
+  });
+
+  it('recovers a string carrying milliseconds, which the contract format has no room for', () => {
+    expect(toSlotIso('2026-11-07T09:00:00.750Z', fixedZone('+01:00'))).toBe(
+      '2026-11-07T10:00:00+01:00'
+    );
   });
 
   it('rebuilds a Date as salon-local wall-clock time on a CET instant', () => {
