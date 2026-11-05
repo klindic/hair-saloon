@@ -110,4 +110,6 @@ inside the Apps Script deployment, which the CEO owns.
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — the agreed design and why it is shaped this way.
 - [CONVENTIONS.md](./CONVENTIONS.md) — naming, boundaries and testing rules.
+- [DEPLOYMENT.md](./DEPLOYMENT.md) — CI, how it ships to GitHub Pages, configuration, what is not
+  set up yet.
 - [docs/](./docs/) — the Google Sheet template and architecture decision records.
