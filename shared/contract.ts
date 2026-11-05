@@ -34,6 +34,10 @@ export interface AvailabilityResponse {
 
 export interface BookRequest {
   action: 'book';
+  // A client-generated UUID, minted by the browser before the request is sent — never by the
+  // backend. It exists so that a request whose response was lost in transit and is then retried
+  // can prove to the backend that it is the same request come again, not a new booking.
+  booking_id: string;
   // The Auth0 access token travels in the BODY, not an Authorization header. Apps Script web
   // apps never answer a CORS preflight, so this POST has to stay a CORS-simple request:
   // Content-Type text/plain;charset=utf-8, no custom headers.
@@ -50,6 +54,8 @@ export interface BookRequest {
 
 export interface BookSuccessResponse {
   ok: true;
+  // Echo of the request's booking_id, never minted by the server. The server's only job with
+  // this value is to recognise it on replay; it is not a source of new ids.
   booking_id: string;
   // Only ever 'requested' from this endpoint, never 'confirmed': v1 promises a recorded request
   // that the salon confirms by hand in the sheet.
@@ -79,6 +85,29 @@ export interface ErrorResponse {
 export type AvailabilityResult = AvailabilityResponse | ErrorResponse;
 export type BookResult = BookSuccessResponse | ErrorResponse;
 export type EndpointResult = AvailabilityResult | BookResult;
+
+// Idempotency replay rule, precisely: a request whose booking_id, verified email, and slot
+// (both slot_start and slot_end) all match an existing row returns that row's original
+// BookSuccessResponse again and writes nothing new. A request whose booking_id and verified
+// email match an existing row but whose slot differs returns the 'invalid_request' error code —
+// the same id cannot be reused to mean a different booking. A booking_id that is not a
+// well-formed UUID also returns 'invalid_request'; it is never treated as a fresh booking with a
+// garbage key.
+//
+// A same-booking_id collision from one customer is expected client behaviour, not a rare edge
+// case: the frontend retries once automatically after a timeout, using the same booking_id, when
+// it cannot tell whether its first POST landed. This replay rule is the system's only way to
+// confirm a write landed, because there is deliberately no bookings-lookup endpoint (cut on
+// privacy grounds — it would let anyone probe who booked what).
+
+// ===== Salon configuration =====
+
+// The one piece of configuration both the browser and the Apps Script runtime need. It exists
+// twice in this system because the two runtimes cannot share a TypeScript import: the second
+// copy is apps-script/src/appsscript.json's `timeZone` field, which Apps Script reads directly
+// as a deploy manifest and so can never import this file. A Node test keeps the two values in
+// sync.
+export const SALON_TIMEZONE = 'Europe/Zagreb';
 
 // ===== Sheet shapes =====
 
