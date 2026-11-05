@@ -88,12 +88,15 @@ export type BookResult = BookSuccessResponse | ErrorResponse;
 export type EndpointResult = AvailabilityResult | BookResult;
 
 // Idempotency replay rule, precisely: a replay is recognised only when a request's booking_id
-// matches an existing row AND every other field in the request also matches that row — verified
-// email, slot_start and slot_end (compared by instant via Date.parse, the same comparison
+// matches an existing row AND every other booking field in the request matches the row's stored
+// values — slot_start and slot_end (compared by instant via Date.parse, the same comparison
 // rangesOverlap and isInPast already use in apps-script/src/domain/slots.ts, never by string
 // equality), service_id, customer_name, and notes (a missing notes field and an empty string
-// count as the same value). Only a full match returns that row's original BookSuccessResponse
-// again and writes nothing new.
+// count as the same value) — and the row's customer_email, which the backend derives once from
+// the verified access_token at write time. The access_token itself is deliberately excluded from
+// the replay comparison: it is a credential, not booking data, and may legitimately differ
+// between attempts if the token was refreshed. Only a full match returns that row's original
+// BookSuccessResponse again and writes nothing new.
 //
 // This is deliberately stricter than "the slot and email are enough": a request whose booking_id
 // matches an existing row but that differs in any other field — a different slot, a different
