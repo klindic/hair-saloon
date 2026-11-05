@@ -22,12 +22,26 @@ export interface BookingsRepo {
   append(row: BookingRow): void;
 }
 
-/** The three columns written as ISO-8601 datetimes, and so the three Sheets can re-type. */
-type DatetimeColumn = 'created_at' | 'slot_start' | 'slot_end';
+/**
+ * The two columns a read actually depends on: the date filter and the overlap/replay checks both
+ * need a correct instant out of `slot_start`/`slot_end`, so both go through the full zone-aware
+ * recovery in `toSlotIso`. `created_at` is not in this list - see `readCreatedAt`.
+ */
+type DatetimeColumn = 'slot_start' | 'slot_end';
 
 const OFFSET_PATTERN = /^[+-]\d{2}:\d{2}$/;
 
 const MILLIS_PER_MINUTE = 60_000;
+
+/**
+ * Thrown when `Zone.offsetFor` hands back something `offsetToMinutes` cannot parse - a 'Z'
+ * because the script's own timezone is UTC/GMT rather than the manifest's pinned zone, say.
+ * That is an infrastructure failure, never a bad cell, so callers must not swallow it the way
+ * they swallow an unparseable row: a row-data error can only ever widen what looks available,
+ * but a zone error means every `Date`-typed row in the sheet looks unparseable at once, which
+ * would otherwise read back as "nothing is booked" instead of the error it actually is.
+ */
+export class ZoneOffsetError extends Error {}
 
 function pad(value: number, width: number): string {
   return String(value).padStart(width, '0');
@@ -35,7 +49,7 @@ function pad(value: number, width: number): string {
 
 function offsetToMinutes(offset: string): number {
   if (!OFFSET_PATTERN.test(offset)) {
-    throw new Error(`Zone returned an offset this code cannot parse: ${offset}`);
+    throw new ZoneOffsetError(`Zone returned an offset this code cannot parse: ${offset}`);
   }
   const sign = offset.startsWith('-') ? -1 : 1;
   const hours = Number(offset.slice(1, 3));
@@ -45,6 +59,15 @@ function offsetToMinutes(offset: string): number {
 
 /** The exact shape a correctly-written cell has: no 'Z', no space, no milliseconds. */
 const EXPLICIT_OFFSET_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/;
+
+/**
+ * The shapes a string may be recovered *from*: an ISO-8601 datetime that writes its own offset
+ * down, as 'Z' or '±HH:MM' (or '±HHMM'), with the seconds and the fraction both optional.
+ * Anything else names no instant at all, and the host machine's timezone is not allowed to supply
+ * one - see `toSlotIso`.
+ */
+const RECOVERABLE_ISO =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:[Zz]|[+-]\d{2}:?\d{2})$/;
 
 /**
  * Shift `instant` by the zone's offset for that instant and read the result back with the UTC
@@ -73,13 +96,24 @@ function reconstructFromInstant(instant: Date, zone: Zone): string {
  * cell has (`EXPLICIT_OFFSET_ISO`) — a shape check, not just a `typeof`. A string that is close
  * but not quite right (a 'Z' suffix, a space instead of 'T', milliseconds) is not published as
  * written: it goes through the same instant-based recovery as a `Date`, so the zone - not the
- * cell - decides the offset that ends up in the response. A string `Date` cannot parse at all
- * throws, the same as any other value this function cannot make sense of.
+ * cell - decides the offset that ends up in the response.
  *
- * A space between the date and time portions is normalised to 'T' before parsing. `Date`'s own
- * constructor accepts a space there on V8 (Node and Apps Script's runtime alike), but that
- * leniency is implementation-defined, not something the language guarantees - normalising first
- * means the actual parse is always the one spec-defined ISO form, on any engine.
+ * That recovery needs a real instant to start from, so the string has to carry an offset of its
+ * own (`RECOVERABLE_ISO`). A string naming a wall-clock time and no offset ('2026-11-07T10:00:00'),
+ * or only a date ('2026-11-07'), is rejected rather than recovered: the language resolves the
+ * first against the *host* machine's local timezone and the second against UTC, either of which
+ * gives the host a vote on the instant and makes the same cell mean different things in Node and
+ * on Apps Script. Reading it as salon-local instead would mean inverting `Zone` - wall-clock to
+ * instant, rather than instant to offset - and that inverse is genuinely ambiguous twice a year at
+ * the DST change, so this function declines to guess. The cost is that an offsetless cell someone
+ * typed by hand is thrown out rather than read generously, which `availabilityFor` turns into an
+ * excluded row: it widens what looks free rather than moving a booking to the wrong hour.
+ *
+ * A space between the date and time portions is normalised to 'T' before the shape is checked and
+ * before parsing. `Date`'s own constructor accepts a space there on V8 (Node and Apps Script's
+ * runtime alike), but that leniency is implementation-defined, not something the language
+ * guarantees - normalising first means the actual parse is always the one spec-defined ISO form,
+ * on any engine.
  */
 export function toSlotIso(value: unknown, zone: Zone): string {
   if (typeof value === 'string') {
@@ -87,8 +121,14 @@ export function toSlotIso(value: unknown, zone: Zone): string {
       return value;
     }
     const normalized = value.replace(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})/, '$1T$2');
+    if (!RECOVERABLE_ISO.test(normalized)) {
+      throw new Error(
+        `Expected an ISO-8601 datetime with an explicit 'Z' or '±HH:MM' offset, got the unparseable string "${value}"`
+      );
+    }
     const parsed = new Date(normalized);
     if (Number.isNaN(parsed.getTime())) {
+      // Right shape, impossible components - the month 13 or the hour 25 the regex waves past.
       throw new Error(`Expected an ISO-8601 datetime, got the unparseable string "${value}"`);
     }
     return reconstructFromInstant(parsed, zone);
@@ -97,6 +137,30 @@ export function toSlotIso(value: unknown, zone: Zone): string {
     return reconstructFromInstant(value, zone);
   }
   throw new Error(`Expected a string or a Date in a datetime cell, got ${typeof value}`);
+}
+
+/**
+ * `created_at` on a row someone else already wrote is metadata nobody reads back: it is set once,
+ * by the app, at the moment that row was appended (from `Clock.now()` in the write path), and
+ * no caller - this endpoint, or the write path's own overlap/replay check - ever needs it out of
+ * an *existing* row to decide anything. Recovering it with `toSlotIso`'s full zone-aware machinery
+ * would make a row's eligibility depend on a cell nothing is testing against: a blank or malformed
+ * `created_at` would throw and exclude an otherwise-good row, the same way a bad `slot_start`
+ * does, for a reason that has nothing to do with whether the slot is actually busy.
+ *
+ * So it is read defensively instead of recovered: a string passes through exactly as written, a
+ * `Date` (Sheets' own auto-parse) is read with `toISOString()` - UTC, not the salon's offset,
+ * which is a fine answer for a value nothing displays - and anything else is stringified. None of
+ * these three paths can throw and none of them consult the zone.
+ */
+function readCreatedAt(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  return String(value);
 }
 
 /**
@@ -113,7 +177,7 @@ export function parseBookingRow(raw: unknown[], zone: Zone): BookingRow {
   const datetime = (column: DatetimeColumn): string => toSlotIso(cell(column), zone);
   return {
     booking_id: String(cell('booking_id')),
-    created_at: datetime('created_at'),
+    created_at: readCreatedAt(cell('created_at')),
     slot_start: datetime('slot_start'),
     slot_end: datetime('slot_end'),
     service_id: String(cell('service_id')),

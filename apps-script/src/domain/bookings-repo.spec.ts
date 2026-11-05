@@ -27,6 +27,40 @@ describe('toSlotIso', () => {
     expect(() => toSlotIso('not a real date', fixedZone('+01:00'))).toThrow(/unparseable/);
   });
 
+  // The host machine must get no vote on the instant. An offsetless string names a wall-clock
+  // time and nothing else, and `new Date` resolves that against the host's own timezone: the same
+  // cell would come back 10:00 on a CET machine and 11:00 under TZ=UTC. Rejecting it is what makes
+  // "the zone - not the cell - decides the offset" true of the instant and not just of the label.
+  it('rejects a datetime string with no offset rather than letting the host decide the instant', () => {
+    expect(() => toSlotIso('2026-11-07T10:00:00', fixedZone('+01:00'))).toThrow(/unparseable/);
+  });
+
+  it('rejects an offsetless datetime written with a space instead of a T', () => {
+    expect(() => toSlotIso('2026-11-07 10:00:00', fixedZone('+01:00'))).toThrow(/unparseable/);
+  });
+
+  it('rejects an offsetless datetime written without seconds', () => {
+    expect(() => toSlotIso('2026-11-07T10:00', fixedZone('+01:00'))).toThrow(/unparseable/);
+  });
+
+  // A bare date is not a slot time, and `new Date` reads it as midnight UTC rather than refusing -
+  // which used to surface as the fabricated '2026-11-07T01:00:00+01:00' on a +01:00 day.
+  it('rejects a date-only string rather than inventing a time of day for it', () => {
+    expect(() => toSlotIso('2026-11-07', fixedZone('+01:00'))).toThrow(/unparseable/);
+  });
+
+  // The other edge of the same check: an offset that *is* written down is recoverable whichever
+  // of ISO-8601's spellings it uses, because none of them need the host to fill anything in.
+  it('recovers a string whose offset is written in basic form, without the colon', () => {
+    expect(toSlotIso('2026-11-07T10:00:00+0100', fixedZone('+01:00'))).toBe(
+      '2026-11-07T10:00:00+01:00'
+    );
+  });
+
+  it('recovers a string that carries an offset but no seconds', () => {
+    expect(toSlotIso('2026-11-07T09:00Z', fixedZone('+01:00'))).toBe('2026-11-07T10:00:00+01:00');
+  });
+
   // The shape check matters, not just typeof: a string that is *close* to the written shape -
   // a 'Z' suffix, a space instead of 'T' - must not be published verbatim. It goes through the
   // same instant-based recovery as a Date, so the zone decides the offset, not the cell.
@@ -128,7 +162,7 @@ describe('parseBookingRow', () => {
   it('builds every BookingRow field from a raw row in BOOKINGS_COLUMNS order', () => {
     const expected: BookingRow = {
       booking_id: 'bk_001',
-      created_at: '2026-11-05T14:29:41+01:00',
+      created_at: '2026-11-05T13:29:41.000Z',
       slot_start: '2026-11-07T10:00:00+01:00',
       slot_end: '2026-11-07T10:45:00+01:00',
       service_id: 'cut',
@@ -146,13 +180,22 @@ describe('parseBookingRow', () => {
     expect(Object.keys(parsed).sort()).toEqual([...BOOKINGS_COLUMNS].sort());
   });
 
-  it('applies the zone offset to the three datetime columns and leaves the rest alone', () => {
+  it('applies the zone offset to slot_start/slot_end and leaves the rest alone', () => {
     const parsed = parseBookingRow(row(), fixedZone('+02:00'));
-    expect(parsed.created_at).toBe('2026-11-05T15:29:41+02:00');
     expect(parsed.slot_start).toBe('2026-11-07T11:00:00+02:00');
     expect(parsed.slot_end).toBe('2026-11-07T11:45:00+02:00');
     expect(parsed.customer_name).toBe('Marko Horvat');
     expect(parsed.notes).toBe('first visit');
+  });
+
+  // created_at is read with toISOString(), never with the zone-aware recovery slot_start/slot_end
+  // get: it is written once by the app and never read back by anything, so two different zones
+  // reading the exact same Date-shaped cell must produce the exact same created_at.
+  it('never consults the zone for created_at, unlike slot_start and slot_end', () => {
+    const viaZoneOne = parseBookingRow(row(), fixedZone('+01:00'));
+    const viaZoneTwo = parseBookingRow(row(), fixedZone('+05:00'));
+    expect(viaZoneOne.created_at).toBe(viaZoneTwo.created_at);
+    expect(viaZoneOne.created_at).toBe('2026-11-05T13:29:41.000Z');
   });
 
   it('leaves datetime cells alone when Sheets handed back the strings as written', () => {
@@ -173,6 +216,21 @@ describe('parseBookingRow', () => {
     expect(parsed.slot_start).toBe('2026-11-07T10:00:00+01:00');
     expect(parsed.slot_end).toBe('2026-11-07T10:45:00+01:00');
     expect(parsed.status).toBe('confirmed');
+  });
+
+  // The bug this fix closes: a blank or malformed created_at must never cost a row its
+  // eligibility, since nothing reads created_at back from an existing row.
+  it('does not throw on a blank created_at, unlike a blank slot_start or slot_end', () => {
+    const raw = row();
+    raw[BOOKINGS_COLUMNS.indexOf('created_at')] = '';
+    expect(() => parseBookingRow(raw, fixedZone('+01:00'))).not.toThrow();
+    expect(parseBookingRow(raw, fixedZone('+01:00')).created_at).toBe('');
+  });
+
+  it('stringifies a non-string, non-Date created_at rather than throwing', () => {
+    const raw = row();
+    raw[BOOKINGS_COLUMNS.indexOf('created_at')] = 42;
+    expect(parseBookingRow(raw, fixedZone('+01:00')).created_at).toBe('42');
   });
 
   it('carries a status the app never writes straight through, without validating it', () => {
