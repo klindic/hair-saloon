@@ -4,7 +4,7 @@
 // forgets to take it back out before `npm run build`.
 //
 // Run: node tools/check-no-secrets.mjs
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { BROWSER_DIST_DIR, REPO_ROOT } from './dist-dir.mjs';
 
@@ -49,6 +49,13 @@ const PATTERNS = [
 const LITERAL_MARKERS = [['service-account private-key marker', '-----BEGIN PRIVATE KEY-----']];
 
 let filesScanned = 0;
+
+if (!existsSync(BROWSER_DIST_DIR)) {
+  console.error(
+    `check:no-secrets: ${relative(REPO_ROOT, BROWSER_DIST_DIR)} does not exist; run npm run build first`
+  );
+  process.exit(1);
+}
 
 for (const filePath of walk(BROWSER_DIST_DIR)) {
   filesScanned += 1;

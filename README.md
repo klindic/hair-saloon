@@ -32,8 +32,7 @@ npm run verify
 This is the one command every engineer runs before opening a pull request. It runs, in order:
 lint, format check, typecheck, the contract check, the Angular unit tests, the Apps Script unit
 tests, the Apps Script bundle build, the production build, the Pages build check, and the bundle
-secret check. If
-`npm run verify` is green, the pull request is ready to open.
+secret check. If `npm run verify` is green, the pull request is ready to open.
 
 `npm run verify:all` runs `npm run verify` and then the Playwright end-to-end suite on top. CI
 runs `npm run verify` and then the same Playwright suite as separate steps, so it fails fast on a
