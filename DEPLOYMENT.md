@@ -64,7 +64,11 @@ run by whoever is sitting at the CEO's logged-in Google account.
 
 ## Configuration
 
-There is no `.env` file and no environment variable in this project, on purpose — this is a
+Configuration happens at two points: the browser and the backend.
+
+### Browser configuration
+
+There is no `.env` file and no environment variable in the browser code, on purpose — this is a
 deliberate deviation from the usual default, not an oversight. Configuration is a runtime JSON
 file, `src/assets/config.json`, fetched by `ConfigService` after the app loads, so one build
 artefact serves both the demo deployment and the CEO's eventual live deployment; only the contents
@@ -82,6 +86,18 @@ blank, `ConfigService` falls back to demo mode. `npm run check:contract` asserts
 carries exactly these three keys and no extras, mechanically, on every `verify` run — an extra key
 is how a credential would end up in a public browser bundle, so this is enforced by tooling rather
 than by review discipline.
+
+### Apps Script backend configuration
+
+The deployed Apps Script reads two values from its own Script Properties (set in the Apps Script
+editor's Settings tab):
+
+| Property       | What it is                                           | Where its value comes from    |
+| -------------- | ---------------------------------------------------- | ----------------------------- |
+| `AUTH0_DOMAIN` | The Auth0 tenant domain                              | Auth0 application settings    |
+| `STYLIST_NAME` | The name to store in every booking's `stylist` field | CEO's choice for the business |
+
+These properties are set as a step in the Apps Script deployment (see step 3 in `docs/handover.md`).
 
 The only real secrets in this system never reach this repository or this pipeline at all: the
 Auth0 application's management-side settings (not needed by the SPA flow), and the OAuth session
