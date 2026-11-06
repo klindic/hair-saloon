@@ -1,10 +1,13 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import type { OpeningHours } from '@contract/contract';
+import type { DayHours, OpeningHours, Service } from '@contract/contract';
 import hoursJson from '../../../data/hours.json';
+import servicesJson from '../../../data/services.json';
 import { BookingPage } from './booking-page';
-import { formatDateKey, isDayOpen } from './scheduling';
+import { formatDateKey, isDayOpen, weekdayForDateKey } from './scheduling';
 
 const hours = hoursJson satisfies OpeningHours as OpeningHours;
+const services = servicesJson satisfies Service[] as Service[];
+const minServiceDurationMinutes = Math.min(...services.map((service) => service.duration_minutes));
 
 // Finding "the next open day" and "the next closed day" from whatever day the test actually runs
 // on — using the same `isDayOpen` the real code path uses, so dated closures in hours.json are
@@ -25,6 +28,17 @@ const indexOfNextClosedDay = () =>
   indexOfNextDay(new Date(), (day) => !isDayOpen(formatDateKey(day), hours));
 const indexOfNextOpenDay = () =>
   indexOfNextDay(new Date(), (day) => isDayOpen(formatDateKey(day), hours));
+
+// `hours[weekday].close` one minute short of the shortest service's duration: the window is open
+// (`open !== null`) but no service can finish before close, same as the crafted repro in the
+// scheduling-level test (`computeDaySlots({ open: '09:00', close: '09:15' }, 20)` === `[]`).
+function tooShortToFitAnyService(open: string): string {
+  const [openHour, openMinute] = open.split(':').map(Number);
+  const closeMinutes = openHour * 60 + openMinute + minServiceDurationMinutes - 1;
+  const closeHour = Math.floor(closeMinutes / 60);
+  const closeMinute = closeMinutes % 60;
+  return `${String(closeHour).padStart(2, '0')}:${String(closeMinute).padStart(2, '0')}`;
+}
 
 describe('BookingPage', () => {
   let fixture: ComponentFixture<BookingPage> | null = null;
@@ -128,6 +142,37 @@ describe('BookingPage', () => {
       'Closed today'
     );
     expect(compiled.querySelector('app-slot-grid button')).toBeNull();
+  });
+
+  it('shows the fully-booked card instead of an empty grid when an open day has no slot that fits any service', async () => {
+    // `dayIsOpen` only knows the shipped opening hours, not whether any service's duration fits
+    // in that window — a day can be open (`open !== null`) and still have zero bookable slots,
+    // e.g. computeDaySlots({ open: '09:00', close: '09:15' }, 20) === []. hours.json has no such
+    // day today, so this test crafts one on the real, shared hours object for the duration of the
+    // test and restores it afterwards: `hoursJson` and `hours` (src/app/features/booking/
+    // booking-page.ts:29) are the same parsed object, so the mutation is visible to the component
+    // under test without any module mocking, which the Angular unit-test builder rejects outright
+    // for relative imports.
+    const openDayIndex = indexOfNextOpenDay();
+    const openDate = new Date();
+    openDate.setDate(openDate.getDate() + openDayIndex);
+    const weekday = weekdayForDateKey(formatDateKey(openDate));
+    const original: DayHours = { ...hours[weekday] };
+    hours[weekday] = { open: original.open, close: tooShortToFitAnyService(original.open!) };
+
+    try {
+      const page = create();
+      dayPickerButtons(page)[openDayIndex].click();
+      await page.whenStable();
+
+      const compiled = page.nativeElement as HTMLElement;
+      expect(compiled.querySelector('app-slot-grid')).toBeNull();
+      expect(compiled.querySelector('app-day-unavailable-card h2')?.textContent?.trim()).toBe(
+        'Fully booked'
+      );
+    } finally {
+      hours[weekday] = original;
+    }
   });
 
   it('moves focus to the first slot button after activating the next-open-day link', async () => {

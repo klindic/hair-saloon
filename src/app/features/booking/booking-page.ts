@@ -51,7 +51,7 @@ interface NextOpenDay {
 
     @if (selectedDate() === null) {
       <p>Pick a day to see open times.</p>
-    } @else if (dayIsOpen()) {
+    } @else if (hasBookableSlots()) {
       <div #slotGridRegion>
         <app-slot-grid
           [slots]="daySlots()"
@@ -61,7 +61,7 @@ interface NextOpenDay {
       </div>
     } @else {
       <app-day-unavailable-card
-        [reason]="'closed'"
+        [reason]="dayUnavailableReason()"
         [selectedDate]="selectedDate()!"
         [nextOpenDay]="nextOpenDay()"
         [phoneNumber]="phoneNumber"
@@ -101,9 +101,21 @@ export class BookingPage {
     return computeDaySlots(hours[weekdayForDateKey(date)], minServiceDurationMinutes);
   });
 
+  // `dayIsOpen` only knows the opening hours; it says nothing about whether any service's
+  // duration actually fits in that window. A day can be open and still have zero bookable slots
+  // (an open→close window shorter than the shortest service), and the template must never render
+  // an empty slot grid for that case — it has to fall through to the day-unavailable card instead.
+  protected readonly hasBookableSlots = computed(
+    () => this.dayIsOpen() && this.daySlots().length > 0
+  );
+
+  protected readonly dayUnavailableReason = computed<'closed' | 'fully-booked'>(() =>
+    this.dayIsOpen() ? 'fully-booked' : 'closed'
+  );
+
   protected readonly nextOpenDay = computed<NextOpenDay | null>(() => {
     const date = this.selectedDate();
-    if (date === null || this.dayIsOpen()) {
+    if (date === null || this.hasBookableSlots()) {
       return null;
     }
     // Bounded by what's left of the day-picker's own window (fixed at `this.today`, never moved),
@@ -135,7 +147,7 @@ export class BookingPage {
     // unavailable day, is handled entirely inside the card; there is nothing to do here for it.)
     afterNextRender(
       () => {
-        if (this.dayIsOpen()) {
+        if (this.hasBookableSlots()) {
           const firstSlotButton = this.slotGridRegion()?.nativeElement.querySelector('button');
           (firstSlotButton ?? this.pageHeading().nativeElement).focus();
         }
