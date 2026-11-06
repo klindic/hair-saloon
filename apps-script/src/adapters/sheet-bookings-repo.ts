@@ -20,18 +20,27 @@ export interface ValueRange {
 }
 
 /**
- * Write one row, having first pinned the datetime columns' cell format to plain text ('@').
+ * Write one row, having first pinned its cells' format to plain text ('@').
  *
  * Sheets auto-converts anything date-shaped into its own internal date-serial representation the
  * moment `setValues` runs, which silently throws away the explicit UTC offset this app writes
  * into `created_at`/`slot_start`/`slot_end` ('2026-11-07T10:00:00+01:00' comes back later as a
- * bare `Date`, with no offset left to recover). Pinning the format to '@' before the write stops
- * Sheets from reinterpreting the string at all.
+ * bare `Date`, with no offset left to recover). The same hazard reaches further than the three
+ * datetime columns, though: a `customer_name` of '007' or a `notes` of a phone number or a date
+ * gets silently reinterpreted too, which breaks `booking.ts`'s exact-string replay comparison on
+ * those fields (a retry would read back as `invalid_request`, the one answer a true replay must
+ * never get) and - because a string starting with '=' is evaluated as a formula by Sheets'
+ * default parsing - is a real injection surface on a customer-supplied field. Pinning the *whole*
+ * row's format to '@' before the write, not only the datetime columns, stops Sheets from
+ * reinterpreting any of it.
  *
- * That pin has to happen on *every* call, not once at setup: a human reformatting the column by
- * hand later (or a new column header pushing the dates sideways) would silently undo a one-time
- * format with nothing to throw and catch it. So the order here - format, then values, every time -
- * is the entire point of this function; do not reorder these two calls.
+ * `dateRange` and `rowRange` may be - and in `SheetBookingsRepo.append` below, are - the exact
+ * same range: the two parameters exist so a narrower range could still be pinned on its own if a
+ * future caller only wants to format part of a row, not because this function needs them to
+ * differ. The format pin has to happen on *every* call, not once at setup: a human reformatting a
+ * column by hand later would silently undo a one-time format with nothing to throw and catch it.
+ * So the order here - format, then values, every time - is the entire point of this function; do
+ * not reorder these two calls.
  */
 export function writeFormattedRow(
   dateRange: FormattableRange,
@@ -67,10 +76,9 @@ export class SheetBookingsRepo implements BookingsRepo {
     const values = BOOKINGS_COLUMNS.map((column) => row[column]);
     // getLastRow() counts the header row too, so +1 is the first genuinely empty row.
     const nextRow = sheet.getLastRow() + 1;
+    // One range, pinned to plain text and written in the same call: see writeFormattedRow for why
+    // the whole row is pinned, not only the three datetime columns.
     const rowRange = sheet.getRange(nextRow, 1, 1, BOOKINGS_COLUMNS.length);
-    // 'created_at', 'slot_start' and 'slot_end' are contiguous and in that order in the contract
-    // today, so one 3-wide range covers all of them; this assumes that stays true.
-    const dateRange = sheet.getRange(nextRow, BOOKINGS_COLUMNS.indexOf('created_at') + 1, 1, 3);
-    writeFormattedRow(dateRange, rowRange, values);
+    writeFormattedRow(rowRange, rowRange, values);
   }
 }
