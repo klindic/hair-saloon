@@ -1,5 +1,11 @@
 import type { AvailabilityResult, BookingRow, BusyRange } from '@contract/contract';
-import { parseBookingRow, ZoneOffsetError, type BookingsRepo, type Zone } from './bookings-repo';
+import {
+  isCancelled,
+  parseBookingRow,
+  ZoneOffsetError,
+  type BookingsRepo,
+  type Zone,
+} from './bookings-repo';
 
 const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -75,10 +81,7 @@ export function availabilityFor(
       }
       continue;
     }
-    // The owner types this cell by hand, so the comparison tolerates the casing and stray
-    // whitespace a human actually produces ('Cancelled', 'cancelled ') rather than only the exact
-    // lowercase literal the contract pins for what the app itself writes.
-    if (row.status.trim().toLowerCase() === 'cancelled') {
+    if (isCancelled(row)) {
       continue;
     }
     if (row.slot_start.slice(0, 10) !== date) {

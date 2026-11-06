@@ -172,12 +172,26 @@ function readCreatedAt(value: unknown): string {
 }
 
 /**
+ * Whether a parsed row counts as cancelled - the chair it names is free again. The owner types
+ * this cell by hand, so the comparison tolerates the casing and stray whitespace a human actually
+ * produces ('Cancelled', 'cancelled ') rather than only the exact lowercase literal the contract
+ * pins for what the app itself writes. Shared by the read path (which must exclude the row from
+ * busy ranges) and the write path (which must not let it block a new booking): the two paths
+ * disagreeing on this one question is exactly what leaves a slot that reads as free permanently
+ * unbookable, so there is only one definition of "cancelled" for both to share.
+ */
+export function isCancelled(row: BookingRow): boolean {
+  return row.status.trim().toLowerCase() === 'cancelled';
+}
+
+/**
  * Zip one raw sheet row against `BOOKINGS_COLUMNS` into a `BookingRow`. Column order comes from
  * the contract, never from a local copy of it, so a column added there breaks here loudly.
  *
- * `status` is cast, not validated: the owner edits that cell by hand and the read path only ever
- * compares it to 'cancelled', so a typo in the sheet is a data problem for the owner to see in
- * the sheet, not an exception that takes the whole day's availability down.
+ * `status` is cast, not validated: the owner edits that cell by hand and the only thing either
+ * path ever compares it against is 'cancelled' (via `isCancelled`), so a typo in the sheet is a
+ * data problem for the owner to see in the sheet, not an exception that takes the whole day's
+ * availability down.
  */
 export function parseBookingRow(raw: unknown[], zone: Zone): BookingRow {
   const cell = (column: (typeof BOOKINGS_COLUMNS)[number]): unknown =>

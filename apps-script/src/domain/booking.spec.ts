@@ -258,6 +258,22 @@ describe('validateBookRequest', () => {
     );
   });
 
+  // toSlotIso's output format has no room for a fraction, so a millisecond-bearing slot would be
+  // stored with the milliseconds silently dropped, and a byte-identical retry - which still
+  // carries them - would then fail the instant comparison and be told its own replay is an id
+  // collision. Rejecting the shape up front is simpler than making that comparison tolerant of a
+  // precision the sheet cannot hold.
+  it('rejects a slot_start or slot_end carrying fractional seconds', () => {
+    expectInvalid(
+      validateBookRequest({ ...bookRequest(), slot_start: '2026-11-07T10:00:00.500+01:00' }),
+      'slot_start'
+    );
+    expectInvalid(
+      validateBookRequest({ ...bookRequest(), slot_end: '2026-11-07T10:45:00.001Z' }),
+      'slot_end'
+    );
+  });
+
   it('rejects a slot_end that is not strictly after slot_start', () => {
     expectInvalid(validateBookRequest({ ...bookRequest(), slot_end: SLOT_START }), 'slot_end');
     expectInvalid(
@@ -313,6 +329,40 @@ describe('bookSlot', () => {
       status: 'requested',
       notes: 'first visit',
     });
+  });
+
+  // A client is free to send 'Z' (UTC) rather than the salon's own offset - the response below
+  // still echoes the request's own string, but the sheet cell must read in the salon's local time,
+  // the same as created_at, not in UTC, or the owner reads the wrong hour off their own sheet.
+  it('normalises a Z-suffixed slot to the salon offset on the written row', () => {
+    const request = bookRequest({
+      slot_start: '2026-11-07T09:00:00Z',
+      slot_end: '2026-11-07T09:45:00Z',
+    });
+    const { ports, append } = harness();
+
+    const result = bookSlot(request, ports);
+    expect(result).toEqual({
+      ok: true,
+      booking_id: BOOKING_A,
+      status: 'requested',
+      slot_start: '2026-11-07T09:00:00Z',
+      slot_end: '2026-11-07T09:45:00Z',
+    });
+    expect(append.mock.calls[0][0].slot_start).toBe(SLOT_START);
+    expect(append.mock.calls[0][0].slot_end).toBe(SLOT_END);
+  });
+
+  // The default harness zone and NOW are both +01:00, so the main "writes exactly one row" test
+  // cannot tell a real toSlotIso(new Date(clock.now()), zone) conversion apart from a bug that
+  // writes clock.now() straight through unconverted - both would produce the identical string by
+  // coincidence. A zone that reports a different offset pins the conversion actually happened.
+  it('derives created_at through the zone, not by echoing clock.now() unconverted', () => {
+    const { ports, append } = harness({ zone: fixedZone('+02:00') });
+
+    bookSlot(bookRequest(), ports);
+    expect(append.mock.calls[0][0].created_at).toBe('2026-11-06T10:00:00+02:00');
+    expect(append.mock.calls[0][0].created_at).not.toBe(NOW);
   });
 
   // Two customers clicking the same slot, serialised by the lock the way the real runtime would:
@@ -549,6 +599,16 @@ describe('bookSlot', () => {
     expect(append).toHaveBeenCalledTimes(1);
   });
 
+  it('ignores a cancelled row the owner typed with different casing or trailing space, same as the read path', () => {
+    const cancelledOddly = storedRow(bookRequest({ booking_id: BOOKING_B }), {
+      status: 'Cancelled ' as BookingRow['status'],
+    });
+    const { ports, append } = harness({ snapshot: [rawRow(cancelledOddly)] });
+
+    expect(bookSlot(bookRequest(), ports)).toEqual(SUCCESS);
+    expect(append).toHaveBeenCalledTimes(1);
+  });
+
   it('accepts a booking that merely touches an existing one at the boundary', () => {
     const earlier = storedRow(
       bookRequest({
@@ -561,6 +621,30 @@ describe('bookSlot', () => {
 
     expect(bookSlot(bookRequest(), ports)).toEqual(SUCCESS);
     expect(append).toHaveBeenCalledTimes(1);
+  });
+
+  // Date-typed slot cells - what getValues() actually hands back for a row Sheets auto-parsed -
+  // driven through to a genuine decision, not only through the zone-error path below. Both use a
+  // working zone, so the conversion must succeed and the result must be correct, not merely throw.
+  it('rejects a slot overlapping a Date-shaped row read back from the sheet', () => {
+    const conflicting = rawRow(storedRow(bookRequest({ booking_id: BOOKING_B })));
+    conflicting[BOOKINGS_COLUMNS.indexOf('slot_start')] = new Date('2026-11-07T09:00:00Z');
+    conflicting[BOOKINGS_COLUMNS.indexOf('slot_end')] = new Date('2026-11-07T09:45:00Z');
+    const { ports, append } = harness({ snapshot: [conflicting] });
+
+    expectError(bookSlot(bookRequest(), ports), 'slot_taken');
+    expect(append).not.toHaveBeenCalled();
+  });
+
+  it('replays against a Date-shaped row read back from the sheet', () => {
+    const request = bookRequest();
+    const stored = rawRow(storedRow(request));
+    stored[BOOKINGS_COLUMNS.indexOf('slot_start')] = new Date('2026-11-07T09:00:00Z');
+    stored[BOOKINGS_COLUMNS.indexOf('slot_end')] = new Date('2026-11-07T09:45:00Z');
+    const { ports, append } = harness({ snapshot: [stored] });
+
+    expect(bookSlot(request, ports)).toEqual(SUCCESS);
+    expect(append).not.toHaveBeenCalled();
   });
 
   // One bad cell elsewhere in the tab must not fail a customer's booking, the same way it does not

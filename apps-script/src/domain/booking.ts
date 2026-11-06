@@ -6,6 +6,7 @@ import type {
   ErrorResponse,
 } from '@contract/contract';
 import {
+  isCancelled,
   parseBookingRow,
   RECOVERABLE_ISO,
   toSlotIso,
@@ -104,20 +105,30 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 /**
- * True only for a string that names a real instant AND carries its own explicit offset.
+ * True only for a string that names a real instant, carries its own explicit offset, and has no
+ * fractional-seconds component.
  *
  * `Date.parse` alone is not enough here: it also accepts an offsetless string like
  * '2026-11-07T10:00' - exactly what a `<input type="datetime-local">` produces - and resolves it
- * against the *host* machine's own timezone, which disagrees between Node and Apps Script. This
- * value is echoed into the sheet verbatim and pinned to plain text (never recovered through
- * `toSlotIso`), so accepting a shape `RECOVERABLE_ISO` would itself refuse would write a row that
- * can never be read back correctly - not by this request's own retry (parseBookingRow throws on
- * it, which the scan below treats as "skip this row", hiding it from both the replay check and the
- * overlap check), not by another customer's overlap check, and not by the read path either.
+ * against the *host* machine's own timezone, which disagrees between Node and Apps Script. The
+ * slot is written through `toSlotIso` (see the row below), so accepting a shape `RECOVERABLE_ISO`
+ * would itself refuse would write a row that can never be read back correctly - not by this
+ * request's own retry (`parseBookingRow` throws on it, which the scan below treats as "skip this
+ * row"), not by another customer's overlap check, and not by the read path either.
+ *
+ * Fractional seconds are rejected separately rather than left to `RECOVERABLE_ISO` (which allows
+ * them): `toSlotIso`'s output format has no room for a fraction, so a millisecond-bearing request
+ * would be stored with its milliseconds silently dropped, and a byte-identical retry of the same
+ * request - which still carries them - would then fail `isSameBooking`'s instant comparison by up
+ * to 999ms and be told its own replay is an id collision. Rejecting the shape up front is simpler
+ * and more honest than making the comparison tolerant of a precision the sheet cannot hold.
  */
 function isParseableInstant(value: unknown): value is string {
   return (
-    typeof value === 'string' && RECOVERABLE_ISO.test(value) && !Number.isNaN(Date.parse(value))
+    typeof value === 'string' &&
+    RECOVERABLE_ISO.test(value) &&
+    !value.includes('.') &&
+    !Number.isNaN(Date.parse(value))
   );
 }
 
@@ -343,10 +354,11 @@ export function bookSlot(candidate: unknown, ports: BookSlotPorts): BookResult {
         continue;
       }
 
-      if (row.status === 'cancelled') {
-        // A cancelled row never blocks a new booking - the chair is free again. The comparison is
-        // exact here, unlike the read path's lenient one: a status the owner typed oddly leaves the
-        // row blocking, which costs a customer a retry rather than double-booking the chair.
+      if (isCancelled(row)) {
+        // A cancelled row never blocks a new booking - the chair is free again. The read path has
+        // already made the call that a slot freed by hand (any casing, any stray whitespace) paints
+        // as free; this path must agree, or a slot that reads as free becomes permanently unbookable
+        // because the write path alone still treats the row as blocking.
         continue;
       }
 
@@ -383,10 +395,14 @@ export function bookSlot(candidate: unknown, ports: BookSlotPorts): BookResult {
       // The only value this function mints. It goes through `toSlotIso` so the cell reads in the
       // salon's own offset, the same as every other datetime column, rather than in UTC.
       created_at: toSlotIso(new Date(ports.clock.now()), ports.zone),
-      // The slot is echoed verbatim, never reformatted: the customer's request is what the sheet
-      // records, and the replay comparison above is by instant anyway.
-      slot_start: request.slot_start,
-      slot_end: request.slot_end,
+      // Normalised through toSlotIso, the same as created_at - never written verbatim. A request
+      // carrying milliseconds or a 'Z' suffix passes isParseableInstant (RECOVERABLE_ISO allows
+      // both) but would otherwise write a cell truncated to the second on read-back, which could
+      // fail a legitimate retry's instant comparison in isSameBooking, and a 'Z' cell would show
+      // the owner UTC rather than their own local time. The response below still echoes the
+      // request's own strings verbatim; only the sheet cell is normalised.
+      slot_start: toSlotIso(request.slot_start, ports.zone),
+      slot_end: toSlotIso(request.slot_end, ports.zone),
       service_id: request.service_id,
       stylist: ports.stylist,
       customer_name: request.customer_name,
