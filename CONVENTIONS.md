@@ -45,8 +45,9 @@ breakage the type checker on the other side will not catch until it is deployed.
 ## Tests
 
 Tests live beside the code they test, as `*.spec.ts` — `app.ts` / `app.spec.ts`,
-`config.service.ts` / `config.service.spec.ts`, `slots.ts` / `slots.spec.ts`. Apps Script domain
-tests (`apps-script/src/domain/**/*.spec.ts`) run under Vitest in plain Node via
+`config.service.ts` / `config.service.spec.ts`, `slots.ts` / `slots.spec.ts`. Everything under
+`apps-script/src/**/*.spec.ts` (domain logic in `apps-script/src/domain/`, plus standalone checks
+like `apps-script/src/manifest.spec.ts`) runs under Vitest in plain Node via
 `apps-script/vitest.config.mts` (`npm run test:script`); anything that touches an Apps Script
 global (`SpreadsheetApp`, `LockService`, `UrlFetchApp`) has no Node equivalent and cannot be unit
 tested this way — see `apps-script/README.md`.
