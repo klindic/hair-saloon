@@ -5,39 +5,40 @@
  *
  * This file is wiring only: it builds the real adapters, reads the request,
  * and hands off to `domain/`. Anything that could be wrong about a row, a
- * date or an offset is decided there, not here, so it can be tested in
- * plain Node. See `apps-script/src/domain/availability.ts` and
- * `apps-script/src/domain/bookings-repo.ts`.
+ * date, an offset or the booking rules is decided there, not here, so it can
+ * be tested in plain Node. See `apps-script/src/domain/availability.ts` and
+ * `apps-script/src/domain/booking.ts`.
  *
- * Two findings worth recording before the write path gets built:
+ * Two findings that shaped the write path's contract:
  *
  * 1. Apps Script web apps never answer a CORS preflight request, so the
  *    browser's POST has to stay a "simple request": no custom headers,
  *    Content-Type text/plain;charset=utf-8, body a JSON string. That
- *    rules out an Authorization header, so the Auth0 token must travel
- *    inside the JSON body instead.
+ *    rules out an Authorization header, so the Auth0 token travels inside
+ *    the JSON body instead (`access_token` in `BookRequest`).
  *
  * 2. Apps Script has no RSA-verify primitive, so the token in that body
- *    cannot be verified locally. It has to be checked by calling Auth0's
+ *    cannot be verified locally. It is checked by calling Auth0's
  *    /userinfo endpoint over UrlFetchApp and reading the email back from
- *    Auth0's response - never trust an email supplied in the request body.
+ *    Auth0's response - never trusting an email supplied in the request
+ *    body, which has no such field at all.
+ *
+ * `AUTH0_DOMAIN` and `STYLIST_NAME` are read from the script's own
+ * Properties Service rather than hardcoded, so they can be set per
+ * deployment without a code change. Neither is defined anywhere yet -
+ * setting them is a deployment step the handover document needs to cover.
  */
 
-import type { AvailabilityResult } from '@contract/contract';
+import type { EndpointResult } from '@contract/contract';
+import { Auth0TokenVerifier } from './adapters/auth0-token-verifier';
+import { ScriptLock } from './adapters/script-lock';
 import { SheetBookingsRepo } from './adapters/sheet-bookings-repo';
+import { SystemClock } from './adapters/system-clock';
 import { ScriptZone } from './adapters/zone';
 import { availabilityResponse } from './domain/availability';
+import { bookSlot } from './domain/booking';
 
-function notImplemented(): GoogleAppsScript.Content.TextOutput {
-  return ContentService.createTextOutput(
-    JSON.stringify({
-      error: 'not_implemented',
-      message: 'This endpoint has not been implemented yet.',
-    })
-  ).setMimeType(ContentService.MimeType.JSON);
-}
-
-function respond(result: AvailabilityResult): GoogleAppsScript.Content.TextOutput {
+function respond(result: EndpointResult): GoogleAppsScript.Content.TextOutput {
   return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(
     ContentService.MimeType.JSON
   );
@@ -56,8 +57,39 @@ function doGet(e: GoogleAppsScript.Events.DoGet): GoogleAppsScript.Content.TextO
   }
 }
 
-function doPost(_e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.Content.TextOutput {
-  return notImplemented();
+function doPost(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.Content.TextOutput {
+  try {
+    // A malformed body is the caller's mistake, not this backend's failure: invalid_request, not
+    // internal_error, and this is the one place in the write path where that distinction is made
+    // before bookSlot's own validation ever runs.
+    let candidate: unknown;
+    try {
+      candidate = JSON.parse(e.postData.contents);
+    } catch {
+      return respond({
+        ok: false,
+        error: 'invalid_request',
+        message: 'The request body is not valid JSON',
+      });
+    }
+
+    const properties = PropertiesService.getScriptProperties();
+    const ports = {
+      clock: new SystemClock(),
+      tokenVerifier: new Auth0TokenVerifier(properties.getProperty('AUTH0_DOMAIN') ?? ''),
+      lock: new ScriptLock(),
+      repo: new SheetBookingsRepo(),
+      zone: new ScriptZone(),
+      stylist: properties.getProperty('STYLIST_NAME') ?? '',
+    };
+    return respond(bookSlot(candidate, ports));
+  } catch (error) {
+    return respond({
+      ok: false,
+      error: 'internal_error',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
 }
 
 // Exported so build.mjs can pull doGet/doPost off the bundle's global
