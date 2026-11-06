@@ -123,4 +123,5 @@ inside the Apps Script deployment, which the CEO owns.
   set up yet.
 - [docs/design/tokens.md](./docs/design/tokens.md) — design tokens for colour, spacing, radius and
   type scale.
+- [docs/design/booking-flow.md](./docs/design/booking-flow.md) — every screen and state of the booking flow, with exact copy.
 - [docs/](./docs/) — the Google Sheet template and architecture decision records.

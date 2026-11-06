@@ -60,6 +60,7 @@ Four engineers working in parallel need this to be a lookup, not a judgement cal
 - Something two features both need → `src/app/core/`. Core never imports a feature.
 - A wire shape, an error code, a sheet column → `shared/contract.ts`, and nowhere else.
 - A colour, space, radius or type size → `docs/design/tokens.md`, and nowhere else.
+- A booking-flow screen's states or exact customer-facing copy → `docs/design/booking-flow.md`, and nowhere else.
 - Salon data the slot grid needs (services, opening hours) → `src/data/`, compiled into the
   bundle. Changing it is a commit; see `src/data/README.md`.
 - Something fetched at runtime → `src/assets/`. Only `config.json` and demo fixtures belong there.
