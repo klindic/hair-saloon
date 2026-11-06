@@ -119,6 +119,8 @@ module.exports = [
         UrlFetchApp: 'readonly',
         MailApp: 'readonly',
         PropertiesService: 'readonly',
+        Session: 'readonly',
+        Utilities: 'readonly',
       },
     },
     rules: {
