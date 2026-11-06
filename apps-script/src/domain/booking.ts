@@ -406,11 +406,11 @@ export function bookSlot(candidate: unknown, ports: BookSlotPorts): BookResult {
       // salon's own offset, the same as every other datetime column, rather than in UTC.
       created_at: toSlotIso(new Date(ports.clock.now()), ports.zone),
       // Normalised through toSlotIso, the same as created_at - never written verbatim. A request
-      // carrying milliseconds or a 'Z' suffix passes isParseableInstant (RECOVERABLE_ISO allows
-      // both) but would otherwise write a cell truncated to the second on read-back, which could
-      // fail a legitimate retry's instant comparison in isSameBooking, and a 'Z' cell would show
-      // the owner UTC rather than their own local time. The response below still echoes the
-      // request's own strings verbatim; only the sheet cell is normalised.
+      // carrying a 'Z' suffix or a basic-offset-without-colon passes isParseableInstant and gets
+      // normalised here; a fractional-seconds request is rejected at validation and never reaches
+      // this line. A 'Z' cell would show the owner UTC rather than their own local time. The
+      // response below still echoes the request's own strings verbatim; only the sheet cell is
+      // normalised.
       slot_start: toSlotIso(request.slot_start, ports.zone),
       slot_end: toSlotIso(request.slot_end, ports.zone),
       service_id: request.service_id,
