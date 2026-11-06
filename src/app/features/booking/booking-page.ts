@@ -21,6 +21,7 @@ import {
   formatDateKey,
   formatNextOpenDayLabel,
   isDayOpen,
+  maxSearchDaysWithinWindow,
   weekdayForDateKey,
 } from './scheduling';
 import { SlotGrid } from './slot-grid/slot-grid';
@@ -105,7 +106,11 @@ export class BookingPage {
     if (date === null || this.dayIsOpen()) {
       return null;
     }
-    const next = findNextOpenDay(date, hours, hours.closures, BOOKING_WINDOW_DAYS);
+    // Bounded by what's left of the day-picker's own window (fixed at `this.today`, never moved),
+    // not a fresh BOOKING_WINDOW_DAYS from wherever the selection landed — otherwise the link can
+    // point at a date with no corresponding day-picker button to show as selected afterwards.
+    const maxDays = maxSearchDaysWithinWindow(this.today, date, this.bookingWindowDays);
+    const next = findNextOpenDay(date, hours, hours.closures, maxDays);
     if (next === null) {
       return null;
     }

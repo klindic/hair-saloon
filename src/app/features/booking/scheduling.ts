@@ -94,6 +94,27 @@ export function computeDaySlots(dayHours: DayHours, minServiceDurationMinutes: n
   return slots;
 }
 
+export function daysBetween(fromDate: string, toDate: string): number {
+  const fromDateObj = parseDateKey(fromDate);
+  const toDateObj = parseDateKey(toDate);
+  return Math.round((toDateObj.getTime() - fromDateObj.getTime()) / 86400000);
+}
+
+// How many days `findNextOpenDay` may still search forward from `fromDate` without landing past
+// the end of a fixed `windowDays`-day window that started at `windowStart` (the day-picker's own
+// `today`, which never moves once the page has loaded). Without this bound, a day picked near the
+// end of that window can produce a next-open-day date with no corresponding day-picker button —
+// reachable whenever `windowStart` is a Monday, since the window's last day then falls on the
+// Sunday that closes it, and a full fresh search from there reaches past the window's own edge.
+export function maxSearchDaysWithinWindow(
+  windowStart: string,
+  fromDate: string,
+  windowDays: number
+): number {
+  const daysFromWindowStart = daysBetween(windowStart, fromDate);
+  return Math.max(0, windowDays - 1 - daysFromWindowStart);
+}
+
 export function findNextOpenDay(
   fromDate: string,
   hours: OpeningHours,
@@ -113,9 +134,8 @@ export function findNextOpenDay(
 }
 
 export function formatNextOpenDayLabel(fromDate: string, targetDate: string): string {
-  const fromDateObj = parseDateKey(fromDate);
   const targetDateObj = parseDateKey(targetDate);
-  const dayDifference = Math.round((targetDateObj.getTime() - fromDateObj.getTime()) / 86400000);
+  const dayDifference = daysBetween(fromDate, targetDate);
   const weekdayName = WEEKDAY_DISPLAY_BY_JS_DAY[targetDateObj.getDay()];
 
   if (dayDifference <= 6) {
