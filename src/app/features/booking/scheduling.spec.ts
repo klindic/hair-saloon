@@ -45,20 +45,31 @@ const SAMPLE_HOURS: OpeningHours = {
 
 describe('computeDaySlots', () => {
   it('produces the right count and first/last slot for a normal open day', () => {
-    const slots = computeDaySlots({ open: '09:00', close: '11:00' });
+    const slots = computeDaySlots({ open: '09:00', close: '11:00' }, 30);
     expect(slots).toEqual(['09:00', '09:30', '10:00', '10:30']);
     expect(slots[0]).toBe('09:00');
     expect(slots[slots.length - 1]).toBe('10:30');
   });
 
   it('returns an empty array for a closed day', () => {
-    expect(computeDaySlots({ open: null, close: null })).toEqual([]);
+    expect(computeDaySlots({ open: null, close: null }, 30)).toEqual([]);
   });
 
   it('never includes the close time when it is an exact multiple of the granularity', () => {
-    const slots = computeDaySlots({ open: '09:00', close: '10:00' });
+    const slots = computeDaySlots({ open: '09:00', close: '10:00' }, 30);
     expect(slots).toEqual(['09:00', '09:30']);
     expect(slots).not.toContain('10:00');
+  });
+
+  it('excludes a start that the shortest service could not finish before close', () => {
+    const slots = computeDaySlots({ open: '10:00', close: '16:00' }, 150);
+    expect(slots[slots.length - 1]).toBe('13:30');
+    expect(slots).not.toContain('14:00');
+  });
+
+  it('keeps every granularity-aligned start when the minimum duration fits exactly', () => {
+    const slots = computeDaySlots({ open: '09:00', close: '10:00' }, 60);
+    expect(slots).toEqual(['09:00']);
   });
 });
 

@@ -8,9 +8,10 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import type { OpeningHours } from '@contract/contract';
+import type { OpeningHours, Service } from '@contract/contract';
 import contactJson from '../../../data/contact.json';
 import hoursJson from '../../../data/hours.json';
+import servicesJson from '../../../data/services.json';
 import { DayPicker } from './day-picker/day-picker';
 import { DayUnavailableCard } from './day-unavailable-card/day-unavailable-card';
 import {
@@ -26,6 +27,8 @@ import { SlotGrid } from './slot-grid/slot-grid';
 
 const hours = hoursJson satisfies OpeningHours as OpeningHours;
 const contact = contactJson;
+const services = servicesJson satisfies Service[] as Service[];
+const minServiceDurationMinutes = Math.min(...services.map((service) => service.duration_minutes));
 
 interface NextOpenDay {
   date: string;
@@ -78,6 +81,12 @@ export class BookingPage {
   protected readonly selectedDate = signal<string | null>(null);
   protected readonly selectedSlot = signal<string | null>(null);
 
+  protected readonly slotSelection = computed(() => {
+    const date = this.selectedDate();
+    const time = this.selectedSlot();
+    return date && time ? { date, time } : null;
+  });
+
   protected readonly dayIsOpen = computed(() => {
     const date = this.selectedDate();
     return date !== null && isDayOpen(date, hours);
@@ -88,7 +97,7 @@ export class BookingPage {
     if (date === null || !this.dayIsOpen()) {
       return [];
     }
-    return computeDaySlots(hours[weekdayForDateKey(date)]);
+    return computeDaySlots(hours[weekdayForDateKey(date)], minServiceDurationMinutes);
   });
 
   protected readonly nextOpenDay = computed<NextOpenDay | null>(() => {

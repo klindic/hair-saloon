@@ -69,7 +69,9 @@ export function isDayOpen(
   return hours[weekdayForDateKey(dateKey)].open !== null;
 }
 
-export function computeDaySlots(dayHours: DayHours): string[] {
+// minServiceDurationMinutes is the shortest duration across services.json: a start that no
+// service could finish before close is never offered.
+export function computeDaySlots(dayHours: DayHours, minServiceDurationMinutes: number): string[] {
   if (dayHours.open === null || dayHours.close === null) {
     return [];
   }
@@ -77,9 +79,14 @@ export function computeDaySlots(dayHours: DayHours): string[] {
   const [closeHour, closeMinute] = dayHours.close.split(':').map(Number);
   const openMinutes = openHour * 60 + openMinute;
   const closeMinutes = closeHour * 60 + closeMinute;
+  const latestStartMinutes = closeMinutes - minServiceDurationMinutes;
 
   const slots: string[] = [];
-  for (let minutes = openMinutes; minutes < closeMinutes; minutes += SLOT_GRANULARITY_MINUTES) {
+  for (
+    let minutes = openMinutes;
+    minutes <= latestStartMinutes;
+    minutes += SLOT_GRANULARITY_MINUTES
+  ) {
     const hour = Math.floor(minutes / 60);
     const minute = minutes % 60;
     slots.push(`${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`);

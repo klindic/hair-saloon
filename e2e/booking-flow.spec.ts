@@ -1,9 +1,15 @@
 // T-07: the demo-mode shell and the slot grid paint entirely from the compiled-in hours/services
-// data, with no network round trip. `hours.json` closes only Sunday as a weekday (plus a few
-// specific dates far in the future) — finding "the next Sunday" and "the next non-Sunday" from
-// whichever day the suite actually runs on keeps these assertions true indefinitely, instead of
-// hardcoding a date that only means "closed" or "open" as of when this file was written.
+// data, with no network round trip. Finding "the next open day" and "the next closed day" from
+// whichever day the suite actually runs on — using the same `isDayOpen` the real code path uses,
+// so dated closures in hours.json are honoured too — keeps these assertions true indefinitely,
+// instead of hardcoding a date that only means "closed" or "open" as of when this file was
+// written.
 import { expect, test } from '@playwright/test';
+import type { OpeningHours } from '../shared/contract';
+import hoursJson from '../src/data/hours.json';
+import { formatDateKey, isDayOpen } from '../src/app/features/booking/scheduling';
+
+const hours = hoursJson satisfies OpeningHours as OpeningHours;
 
 function dateKeyAt(offsetDays: number): string {
   const date = new Date();
@@ -25,8 +31,8 @@ function offsetOfNextDay(matches: (day: Date) => boolean): number {
   throw new Error('no matching day found in the 14-day window');
 }
 
-const nextOpenDayOffset = () => offsetOfNextDay((day) => day.getDay() !== 0);
-const nextClosedDayOffset = () => offsetOfNextDay((day) => day.getDay() === 0);
+const nextOpenDayOffset = () => offsetOfNextDay((day) => isDayOpen(formatDateKey(day), hours));
+const nextClosedDayOffset = () => offsetOfNextDay((day) => !isDayOpen(formatDateKey(day), hours));
 
 test('the demo-mode banner is persistent and the sign-in control is disabled', async ({ page }) => {
   await page.goto('/');
