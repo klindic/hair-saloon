@@ -66,13 +66,13 @@ const EXPLICIT_OFFSET_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}
  * Anything else names no instant at all, and the host machine's timezone is not allowed to supply
  * one - see `toSlotIso`.
  *
- * Exported because the write path (`booking.ts`) reuses it as the gate on a client-submitted
- * `slot_start`/`slot_end`: those strings are echoed into the sheet verbatim and then pinned to
- * plain text, so they are never run through `toSlotIso` to recover anything - but accepting a
- * shape this module could not itself recover would mean the backend's two decisions about the
- * same string disagree with each other. `Date.parse` alone is not this gate: it also accepts an
- * offsetless string, which the host machine would resolve differently in Node than on Apps
- * Script, which is exactly what this regex exists to refuse.
+ * Exported because the write path (`booking.ts`) uses it as the gate on client-submitted
+ * `slot_start`/`slot_end`. Both values are then run through `toSlotIso` to normalize to the
+ * salon's timezone (the same as `created_at`), so this regex must accept only a shape
+ * `toSlotIso` can itself recover from - ensuring the backend's decisions about the same string
+ * remain consistent. `Date.parse` alone is not this gate: it also accepts an offsetless string,
+ * which the host machine would resolve differently in Node than on Apps Script, which is exactly
+ * what this regex exists to refuse.
  */
 export const RECOVERABLE_ISO =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:[Zz]|[+-]\d{2}:?\d{2})$/;
