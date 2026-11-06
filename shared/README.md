@@ -21,6 +21,9 @@ The types and constants in `contract.ts` define:
 - The salon data shipped with the build: `Weekday`, `WEEKDAYS`, `DayHours`, `Closure`, and
   `OpeningHours`. A closed weekday is `{ open: null, close: null }`, not an empty string or a
   missing key — that is the one representation the rest of the code trusts.
+- The salon configuration: `SALON_TIMEZONE`. This exists as a value, so a Node test can verify
+  that the duplicate in `apps-script/src/appsscript.json`'s `timeZone` field has not drifted —
+  the Apps Script runtime reads that manifest directly and cannot import this file.
 
 Both the frontend and backend import these types. **Changing a field name or shape here is a
 breaking change** that requires coordinated updates:

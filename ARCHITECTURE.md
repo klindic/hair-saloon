@@ -28,10 +28,16 @@ This is the part that stops four people colliding when they work in parallel:
 - `shared/contract.ts` is the only definition of the wire format. Both the Angular app and the
   Apps Script backend import it; nobody redefines these shapes locally.
 - `apps-script/src/domain` holds pure functions with no Apps Script globals, so they run and are
-  tested under plain Node (`apps-script/src/domain/slots.ts` is the first example).
-- `apps-script/src/main.ts` is the only file allowed to touch `SpreadsheetApp`, `LockService` or
-  `UrlFetchApp`. Everything that needs those globals is called from here, not scattered through
-  the domain layer.
+  tested under plain Node (`apps-script/src/domain/slots.ts` is the first example). Where a port
+  is needed — reading the sheet, resolving the salon's current UTC offset — `domain` defines the
+  interface (`BookingsRepo`, `Zone` in `apps-script/src/domain/bookings-repo.ts`) and a fake
+  satisfies it in tests.
+- `apps-script/src/adapters` holds the concrete, globals-touching side of each port — one file per
+  port (`sheet-bookings-repo.ts`, `zone.ts`), the only files allowed to touch `SpreadsheetApp`,
+  `Session`, `Utilities`, `LockService` or `UrlFetchApp`. This code has no Node equivalent and
+  cannot be unit tested; correctness here comes from review, not a test suite.
+- `apps-script/src/main.ts` is wiring only: it reads the request, builds the real adapters, and
+  calls into `domain`. It does not decide anything itself.
 - `src/data/` is salon data compiled **into** the bundle — services and opening hours. It is read
   at build time and never fetched. `src/data/README.md` says why.
 - `src/assets/` is the opposite: files fetched at runtime. `config.json` (the one file the CEO
@@ -79,7 +85,11 @@ Saturday should be loses them.
 
 **Write path.** A POST carries the Auth0 access token. The backend derives the customer's email
 from that verified token and ignores any email in the request body, takes a `LockService` lock,
-re-reads the sheet, and either writes exactly one row or returns a `slot_taken` rejection.
+re-reads the sheet, and either writes exactly one row, returns a `slot_taken` rejection, or
+replays the original success and writes nothing if a request reappears whose `booking_id` matches
+an existing row and whose every other field matches that row too (the idempotency rule for
+retries; see the "Idempotency replay rule" comment in `shared/contract.ts` for the precise rule,
+including the status-on-replay decision).
 Authentication sits on the write path only, never the read path: Apps Script has no RSA-verify
 primitive, so the token is checked by calling Auth0's `/userinfo` endpoint, and Auth0's free tier
 rate-limits `/userinfo` to 5 sustained and 10 burst requests per minute per user. Every page view

@@ -30,9 +30,10 @@ npm run verify
 ```
 
 This is the one command every engineer runs before opening a pull request. It runs, in order:
-lint, format check, typecheck, the contract check, the Angular unit tests, the Apps Script unit
-tests, the Apps Script bundle build, the production build, the Pages build check, and the bundle
-secret check. If `npm run verify` is green, the pull request is ready to open.
+lint, format check, typecheck, the contract check, the contrast check, the Angular unit tests,
+the Apps Script unit tests, the Apps Script bundle build, the production build, the Pages build
+check, and the bundle secret check. If `npm run verify` is green, the pull request is ready to
+open.
 
 `npm run verify:all` runs `npm run verify` and then the Playwright end-to-end suite on top. CI
 runs `npm run verify` and then the same Playwright suite as separate steps, so it fails fast on a
@@ -53,6 +54,7 @@ the Playwright half yourself needs `npx playwright install chromium` once per ma
 | `npm run format:check`     | Checks formatting without writing — what `verify` runs.            |
 | `npm run typecheck`        | Type-checks the app, the specs, the backend and e2e.               |
 | `npm run check:contract`   | Checks the sheet template against the contract — see below.        |
+| `npm run check:contrast`   | Checks WCAG contrast ratios in the design tokens — see below.      |
 | `npm run check:pages`      | Builds for Pages and asserts base href, 404 fallback, asset paths. |
 | `npm run check:no-secrets` | Scans the production bundle for embedded credentials.              |
 | `npm test`                 | Runs the Angular unit tests (`ng test`).                           |
@@ -73,6 +75,12 @@ matches the `BOOKINGS_COLUMNS` / `SERVICES_COLUMNS` constants in `shared/contrac
 names agree, that every shipped JSON file parses, and that `src/assets/config.json` carries exactly
 its three expected keys and no extras — an extra key is how a credential would end up in a public
 browser bundle. See `shared/README.md`.
+
+`npm run check:contrast` recomputes every WCAG 2.x contrast ratio recorded in
+`docs/design/tokens.md` from its hex colours, checks each pair against its stated AA requirement,
+and cross-checks those hexes against the token values declared in the same document's Colour
+table, so a value edited in one place without re-measuring the other fails the check. A self-test
+against two of WCAG's own published reference pairs runs first, every time.
 
 `npm run check:pages` builds with the Pages base href, serves that build the way Pages serves it,
 and asserts over HTTP that the base href landed in `index.html`, that a deep link falls back to
@@ -113,4 +121,6 @@ inside the Apps Script deployment, which the CEO owns.
 - [CONVENTIONS.md](./CONVENTIONS.md) — naming, boundaries and testing rules.
 - [DEPLOYMENT.md](./DEPLOYMENT.md) — CI, how it ships to GitHub Pages, configuration, what is not
   set up yet.
+- [docs/design/tokens.md](./docs/design/tokens.md) — design tokens for colour, spacing, radius and
+  type scale.
 - [docs/](./docs/) — the Google Sheet template and architecture decision records.

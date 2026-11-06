@@ -19,10 +19,10 @@ push to `main`:
 
 1. `npm ci` on the Node version pinned in `.nvmrc`.
 2. `npm run verify` — lint, format check, typecheck (app, specs, Apps Script, e2e), the sheet/
-   contract check, the Angular unit tests, the Apps Script unit tests, the Apps Script bundle
-   build, the production build, and the Pages build check. This is the exact command an engineer
-   runs before opening a pull request — CI has no separate step list, so "green locally" and
-   "green in CI" cannot drift apart.
+   contract check, the contrast check, the Angular unit tests, the Apps Script unit tests, the
+   Apps Script bundle build, the production build, and the Pages build check. This is the exact
+   command an engineer runs before opening a pull request — CI has no separate step list, so
+   "green locally" and "green in CI" cannot drift apart.
 3. `npx playwright install --with-deps chromium`, then `npm run test:e2e` — the Playwright suite
    against the real built bundle served the way Pages serves it, not against the dev server.
 4. On failure, the Playwright HTML report is uploaded as a build artefact for 7 days.
