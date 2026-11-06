@@ -10,11 +10,13 @@
 // Doc-check usage (also runs inside npm run verify):
 //   node tools/check-contrast.mjs
 //     -> re-derives every row of the ratio table in docs/design/tokens.md from its hex columns
-//        and fails if a recorded ratio, pass/fail verdict, or AA/AAA requirement doesn't match,
-//        and cross-checks both hex columns against the Colour table, so a hex that no longer
-//        matches the token it names in the row is a failure rather than a row that agrees with
-//        itself. The mode is read from the "(light)"/"(dark)" marker that ends every Pairing
-//        cell; a row without one fails, because without it the hex cannot be checked at all.
+//        and fails if the recorded ratio disagrees with the recomputed one, if the Pass/Fail
+//        verdict disagrees with whether that ratio clears its required threshold, or if the
+//        threshold itself can't be parsed. It also cross-checks both hex columns against the
+//        Colour table, so a hex that no longer matches the token it names in the row is a
+//        failure rather than a row that agrees with itself. The mode is read from the
+//        "(light)"/"(dark)" marker that ends every Pairing cell; a row without one fails,
+//        because without it the hex cannot be checked at all.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { REPO_ROOT } from './dist-dir.mjs';
