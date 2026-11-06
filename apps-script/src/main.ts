@@ -64,6 +64,13 @@ function doPost(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.Content.Tex
     // before bookSlot's own validation ever runs.
     let candidate: unknown;
     try {
+      if (!e.postData) {
+        return respond({
+          ok: false,
+          error: 'invalid_request',
+          message: 'The request body is missing',
+        });
+      }
       candidate = JSON.parse(e.postData.contents);
     } catch {
       return respond({
@@ -74,13 +81,23 @@ function doPost(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.Content.Tex
     }
 
     const properties = PropertiesService.getScriptProperties();
+    const auth0Domain = properties.getProperty('AUTH0_DOMAIN');
+    const stylistName = properties.getProperty('STYLIST_NAME');
+    if (!auth0Domain || !stylistName) {
+      return respond({
+        ok: false,
+        error: 'internal_error',
+        message: 'The backend is not configured',
+      });
+    }
+
     const ports = {
       clock: new SystemClock(),
-      tokenVerifier: new Auth0TokenVerifier(properties.getProperty('AUTH0_DOMAIN') ?? ''),
+      tokenVerifier: new Auth0TokenVerifier(auth0Domain),
       lock: new ScriptLock(),
       repo: new SheetBookingsRepo(),
       zone: new ScriptZone(),
-      stylist: properties.getProperty('STYLIST_NAME') ?? '',
+      stylist: stylistName,
     };
     return respond(bookSlot(candidate, ports));
   } catch (error) {
