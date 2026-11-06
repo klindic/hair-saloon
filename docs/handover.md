@@ -72,6 +72,10 @@ These two values go into `src/assets/config.json` in step 4.
   screen; match whichever options correspond to those two meanings.
 - Copy the resulting URL, which ends in `/exec` (see the pattern in
   `src/assets/config.example.json`).
+- Set two Script Properties in the Apps Script editor's Settings tab:
+  - `AUTH0_DOMAIN` — the Auth0 domain from step 2
+  - `STYLIST_NAME` — the stylist name to store in every booking (the CEO's
+    choice for the business)
 
 ## 4. Fill in `src/assets/config.json` and commit
 
@@ -97,6 +101,13 @@ the site back into demo mode with no other change needed.
   with Google is offered rather than disabled.
 - Make one test booking through the live site and confirm a new row appears
   in the `Bookings` tab with `status` set to `requested`.
+- Make a second test booking with a name or note that starts with an `=`
+  sign (for example, a name of `=1+1`). Open the `Bookings` tab and confirm
+  the cell shows the literal text `=1+1`, not a formula result like `2` and
+  not a `#NAME?`/`#ERROR!` cell. The backend pins every cell to plain text
+  before writing specifically so Sheets never evaluates a customer-supplied
+  value as a formula — this step is the only way to confirm that actually
+  holds against a real Sheet, since nothing in the code's own tests can.
 
 ## What only the CEO can do
 
