@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BOOKINGS_COLUMNS, type BookingRow } from '@contract/contract';
-import { parseBookingRow, toSlotIso, type Zone } from './bookings-repo';
+import { parseBookingRow, toSlotIso, ZoneOffsetError, type Zone } from './bookings-repo';
 
 /** A zone pinned to one offset, so a test says which offset it is asserting against. */
 function fixedZone(offset: string): Zone {
@@ -140,7 +140,7 @@ describe('toSlotIso', () => {
 
   it('throws rather than emit a half-formed string when the zone answers nonsense', () => {
     expect(() => toSlotIso(new Date('2026-11-07T09:00:00Z'), fixedZone('CET'))).toThrow(
-      /cannot parse/
+      ZoneOffsetError
     );
   });
 });
