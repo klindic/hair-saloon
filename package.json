@@ -20,12 +20,13 @@
     "test:e2e": "playwright test",
     "check:contract": "node tools/check-contract.mjs",
     "check:contrast": "node tools/check-contrast.mjs",
-    "verify": "npm run lint && npm run format:check && npm run typecheck && npm run check:contract && npm run check:contrast && npm run test && npm run test:script && npm run script:build && npm run build && npm run check:pages && npm run check:no-secrets",
+    "verify": "npm run lint && npm run format:check && npm run typecheck && npm run check:contract && npm run check:contrast && npm run test && npm run test:script && npm run script:build && npm run build && npm run check:pages && npm run check:no-secrets && npm run check:fonts",
     "verify:all": "npm run verify && npm run test:e2e",
     "script:build": "node apps-script/build.mjs",
     "script:push": "clasp push",
     "check:pages": "npm run build:pages && node tools/check-pages-build.mjs",
-    "check:no-secrets": "node tools/check-no-secrets.mjs"
+    "check:no-secrets": "node tools/check-no-secrets.mjs",
+    "check:fonts": "npm run build:pages && node tools/check-fonts-build.mjs"
   },
   "dependencies": {
     "@angular/common": "22.2.4",
@@ -34,6 +35,8 @@
     "@angular/forms": "22.2.4",
     "@angular/platform-browser": "22.2.4",
     "@angular/router": "22.2.4",
+    "@fontsource-variable/fraunces": "5.3.0",
+    "@fontsource/work-sans": "5.3.0",
     "rxjs": "7.8.2",
     "tslib": "^2.3.0"
   },
