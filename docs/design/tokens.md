@@ -207,6 +207,10 @@ ends up with the even, dense rhythm of a dashboard. If something feels like it w
 this system, as the submit control's height. That is a dimension, not a space step; it is not
 `--space-anything` and nothing pads by it.)
 
+**The minimum tap target** is `44px`, in both dimensions, including padding — a slot tile never
+goes below it. Like the submit control's `48px`, this is a dimension, not a `--space-*` step:
+nothing pads by it and it does not become a new token.
+
 **Asymmetry is the point.** Editorial whitespace is lopsided: pair a large step on one side with a
 small one on the other — `--space-8` leading in from the left and `--space-5` on the right, a
 section with `--space-7` above it and `--space-6` below. Equal padding on all four sides of
