@@ -83,6 +83,14 @@ const LOCK_TIMEOUT_MS = 5000;
  */
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Any C0 control character, CR and LF included. `access_token` is interpolated directly into an
+ * `Authorization: Bearer ${accessToken}` header that `Auth0TokenVerifier` sends via
+ * `UrlFetchApp.fetch`; rejecting this shape here closes a CRLF header-injection path on that sink
+ * regardless of whatever sanitisation `UrlFetchApp` may or may not already perform underneath.
+ */
+const CONTROL_CHARACTER = /[\x00-\x1f]/;
+
 function invalidRequest(message: string): ErrorResponse {
   return { ok: false, error: 'invalid_request', message };
 }
@@ -157,8 +165,10 @@ export function validateBookRequest(candidate: unknown): BookRequest | ErrorResp
     return invalidRequest("Field 'booking_id' must be a UUID in canonical 8-4-4-4-12 hex form");
   }
   const accessToken = fields.access_token;
-  if (!isNonEmptyString(accessToken)) {
-    return invalidRequest("Field 'access_token' must be a non-empty string");
+  if (!isNonEmptyString(accessToken) || CONTROL_CHARACTER.test(accessToken)) {
+    return invalidRequest(
+      "Field 'access_token' must be a non-empty string with no control characters"
+    );
   }
   const slotStart = fields.slot_start;
   if (!isParseableInstant(slotStart)) {

@@ -213,6 +213,25 @@ describe('validateBookRequest', () => {
     expectInvalid(validateBookRequest(bookRequestWithout('access_token')), 'access_token');
   });
 
+  // access_token is interpolated straight into an `Authorization: Bearer ${accessToken}` header
+  // sent by UrlFetchApp (see Auth0TokenVerifier); a CR or LF in it would be a header-injection
+  // attempt against that sink regardless of whatever UrlFetchApp itself does underneath.
+  it('rejects an access_token containing a control character', () => {
+    const withCrLf = `token-abc\r\nX-Injected: 1`;
+    expectInvalid(
+      validateBookRequest({ ...bookRequest(), access_token: withCrLf }),
+      'access_token'
+    );
+    expectInvalid(
+      validateBookRequest({ ...bookRequest(), access_token: 'token-abc\nmore' }),
+      'access_token'
+    );
+    expectInvalid(
+      validateBookRequest({ ...bookRequest(), access_token: 'token-abc\x00more' }),
+      'access_token'
+    );
+  });
+
   it('rejects an unparseable slot_start or slot_end', () => {
     expectInvalid(
       validateBookRequest({ ...bookRequest(), slot_start: 'tomorrow at ten' }),
