@@ -13,6 +13,10 @@ Shapes are frozen in `shared/contract.ts` (`Service`, `OpeningHours`). A closed 
 `{ "open": null, "close": null }`. `salon-data.spec.ts` checks both files against those types and
 against the invariants the grid depends on — run `npm test`.
 
+`contact.json` is the salon's phone number, shown when there is no open day left to offer. The
+number in it is a placeholder — the real one is still an open ask to the salon owner — so it has to
+be replaced before launch.
+
 This is not the same thing as `src/assets/`:
 
 - `src/data/` — compiled in, read at build time, never fetched.

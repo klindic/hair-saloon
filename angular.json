@@ -32,9 +32,20 @@
                 "glob": "**/*",
                 "input": "src/assets",
                 "output": "assets"
+              },
+              {
+                "glob": "{fraunces-latin-standard-normal.woff2,fraunces-latin-ext-standard-normal.woff2}",
+                "input": "node_modules/@fontsource-variable/fraunces/files",
+                "output": "fonts/fraunces"
+              },
+              {
+                "glob": "{work-sans-latin-400-normal.woff2,work-sans-latin-ext-400-normal.woff2,work-sans-latin-500-normal.woff2,work-sans-latin-ext-500-normal.woff2,work-sans-latin-600-normal.woff2,work-sans-latin-ext-600-normal.woff2}",
+                "input": "node_modules/@fontsource/work-sans/files",
+                "output": "fonts/work-sans"
               }
             ],
-            "styles": ["src/styles.scss"]
+            "styles": ["src/styles.scss"],
+            "externalDependencies": ["fonts/*"]
           },
           "configurations": {
             "production": {
