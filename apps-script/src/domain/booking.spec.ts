@@ -222,6 +222,42 @@ describe('validateBookRequest', () => {
     expectInvalid(validateBookRequest(bookRequestWithout('slot_end')), 'slot_end');
   });
 
+  // Date.parse alone would accept these - they are exactly what <input type="datetime-local">
+  // produces, and what a client with a stale form might send - but the host machine would then
+  // decide the instant, differently in Node than on Apps Script, and the row would be written
+  // verbatim and pinned to plain text: unrecoverable, forever, by this request's own retry, by any
+  // other customer's overlap check, and by the read path too.
+  it('rejects a slot_start or slot_end with no explicit offset', () => {
+    expectInvalid(
+      validateBookRequest({ ...bookRequest(), slot_start: '2026-11-07T10:00:00' }),
+      'slot_start'
+    );
+    expectInvalid(
+      validateBookRequest({ ...bookRequest(), slot_start: '2026-11-07T10:00' }),
+      'slot_start'
+    );
+    expectInvalid(
+      validateBookRequest({ ...bookRequest(), slot_start: '2026-11-07' }),
+      'slot_start'
+    );
+    expectInvalid(
+      validateBookRequest({ ...bookRequest(), slot_end: '2026-11-07T10:45:00' }),
+      'slot_end'
+    );
+  });
+
+  it('accepts a slot_start or slot_end with any of the offset shapes the sheet can recover', () => {
+    expect(
+      'ok' in validateBookRequest({ ...bookRequest(), slot_start: '2026-11-07T09:00:00Z' })
+    ).toBe(false);
+    expect(
+      'ok' in validateBookRequest({ ...bookRequest(), slot_start: '2026-11-07T09:00:00+0100' })
+    ).toBe(false);
+    expect('ok' in validateBookRequest({ ...bookRequest(), slot_start: '2026-11-07T09:00Z' })).toBe(
+      false
+    );
+  });
+
   it('rejects a slot_end that is not strictly after slot_start', () => {
     expectInvalid(validateBookRequest({ ...bookRequest(), slot_end: SLOT_START }), 'slot_end');
     expectInvalid(
@@ -570,6 +606,111 @@ describe('bookSlot', () => {
     const { ports, append } = harness({ snapshot: [rawRow(stored)] });
 
     expect(bookSlot(bookRequestWithout('notes'), ports)).toEqual(SUCCESS);
+    expect(append).not.toHaveBeenCalled();
+  });
+
+  // isSameBooking's job is to catch an edited resubmission under a reused id - these pin the
+  // fields email/slot don't already cover, each on its own, so deleting any one comparison from
+  // that function is caught here rather than passing silently.
+  it('refuses a reused booking_id that names a different service, and writes nothing', () => {
+    const request = bookRequest();
+    const stolen = storedRow(request, { service_id: 'cut' });
+    const { ports, append } = harness({ snapshot: [rawRow(stolen)] });
+
+    expectError(bookSlot(request, ports), 'invalid_request', 'booking_id');
+    expect(append).not.toHaveBeenCalled();
+  });
+
+  it('refuses a reused booking_id that names a different customer_name, and writes nothing', () => {
+    const request = bookRequest();
+    const stolen = storedRow(request, { customer_name: 'Someone Else' });
+    const { ports, append } = harness({ snapshot: [rawRow(stolen)] });
+
+    expectError(bookSlot(request, ports), 'invalid_request', 'booking_id');
+    expect(append).not.toHaveBeenCalled();
+  });
+
+  it('refuses a reused booking_id that names different notes, and writes nothing', () => {
+    const request = bookRequest({ notes: 'first visit' });
+    const stolen = storedRow(request, { notes: 'a completely different note' });
+    const { ports, append } = harness({ snapshot: [rawRow(stolen)] });
+
+    expectError(bookSlot(request, ports), 'invalid_request', 'booking_id');
+    expect(append).not.toHaveBeenCalled();
+  });
+
+  // The receipt is for the write that happened, regardless of what the owner has since done to the
+  // row by hand - including cancelling it. A retry of a booking the owner later cancelled must
+  // still replay the original success, never append a second row under the same id.
+  it('replays with status requested even when the stored row has since been cancelled', () => {
+    const request = bookRequest();
+    const { ports, append } = harness({
+      snapshot: [rawRow(storedRow(request, { status: 'cancelled' }))],
+    });
+
+    expect(bookSlot(request, ports)).toEqual(SUCCESS);
+    expect(append).not.toHaveBeenCalled();
+  });
+
+  it('reads the sheet exactly once on a request that actually reaches the append', () => {
+    const { ports, loadBookingsSnapshot, append } = harness();
+
+    bookSlot(bookRequest(), ports);
+    expect(loadBookingsSnapshot).toHaveBeenCalledTimes(1);
+    expect(append).toHaveBeenCalledTimes(1);
+  });
+
+  // A full match for this request's own booking_id must win no matter where in the snapshot it
+  // sits relative to a row that merely collides on the same id without matching - proven in both
+  // orders, since a scan that returns on the FIRST id match it meets (rather than deferring, the
+  // way the overlap flag already does) would get the second case backwards.
+  it('replays when the full match comes before a same-id collision in the snapshot', () => {
+    const request = bookRequest();
+    const match = storedRow(request);
+    const collision = storedRow(request, {
+      booking_id: request.booking_id,
+      customer_name: 'Someone Else',
+    });
+    const { ports, append } = harness({ snapshot: [rawRow(match), rawRow(collision)] });
+
+    expect(bookSlot(request, ports)).toEqual(SUCCESS);
+    expect(append).not.toHaveBeenCalled();
+  });
+
+  it('replays when the full match comes after a same-id collision in the snapshot', () => {
+    const request = bookRequest();
+    const collision = storedRow(request, {
+      booking_id: request.booking_id,
+      customer_name: 'Someone Else',
+    });
+    const match = storedRow(request);
+    const { ports, append } = harness({ snapshot: [rawRow(collision), rawRow(match)] });
+
+    expect(bookSlot(request, ports)).toEqual(SUCCESS);
+    expect(append).not.toHaveBeenCalled();
+  });
+
+  // Both continue statements in the scan (an unparseable row, a cancelled row) must genuinely
+  // continue rather than stop the scan - a snapshot with only one row can't tell the two apart
+  // from a `break`, since there would be nothing left to miss either way.
+  it('keeps scanning past an unparseable row to find a real conflict later in the snapshot', () => {
+    const broken = rawRow(storedRow(bookRequest({ booking_id: BOOKING_B })));
+    broken[BOOKINGS_COLUMNS.indexOf('slot_start')] = 'garbage';
+    const conflicting = storedRow(bookRequest({ booking_id: BOOKING_B }));
+    const { ports, append } = harness({ snapshot: [broken, rawRow(conflicting)] });
+
+    expectError(bookSlot(bookRequest(), ports), 'slot_taken');
+    expect(append).not.toHaveBeenCalled();
+  });
+
+  it('keeps scanning past a cancelled row to find a real conflict later in the snapshot', () => {
+    const cancelled = storedRow(bookRequest({ booking_id: BOOKING_B }), { status: 'cancelled' });
+    const conflicting = storedRow(bookRequest({ booking_id: BOOKING_B }));
+    const { ports, append } = harness({
+      snapshot: [rawRow(cancelled), rawRow(conflicting)],
+    });
+
+    expectError(bookSlot(bookRequest(), ports), 'slot_taken');
     expect(append).not.toHaveBeenCalled();
   });
 });

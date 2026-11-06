@@ -7,6 +7,7 @@ import type {
 } from '@contract/contract';
 import {
   parseBookingRow,
+  RECOVERABLE_ISO,
   toSlotIso,
   ZoneOffsetError,
   type BookingsRepo,
@@ -102,9 +103,22 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
-/** True only for a string `Date` can turn into a real instant. */
+/**
+ * True only for a string that names a real instant AND carries its own explicit offset.
+ *
+ * `Date.parse` alone is not enough here: it also accepts an offsetless string like
+ * '2026-11-07T10:00' - exactly what a `<input type="datetime-local">` produces - and resolves it
+ * against the *host* machine's own timezone, which disagrees between Node and Apps Script. This
+ * value is echoed into the sheet verbatim and pinned to plain text (never recovered through
+ * `toSlotIso`), so accepting a shape `RECOVERABLE_ISO` would itself refuse would write a row that
+ * can never be read back correctly - not by this request's own retry (parseBookingRow throws on
+ * it, which the scan below treats as "skip this row", hiding it from both the replay check and the
+ * overlap check), not by another customer's overlap check, and not by the read path either.
+ */
 function isParseableInstant(value: unknown): value is string {
-  return typeof value === 'string' && !Number.isNaN(Date.parse(value));
+  return (
+    typeof value === 'string' && RECOVERABLE_ISO.test(value) && !Number.isNaN(Date.parse(value))
+  );
 }
 
 /**
@@ -229,7 +243,8 @@ function isSameBooking(request: BookRequest, verifiedEmail: string, row: Booking
  *   deliberately no error code for contention: telling a customer their slot is gone when all that
  *   happened is that another request held a mutex for a moment would be a lie about the sheet.
  * - The snapshot is read exactly once and scanned exactly once, and the scan finishes before any
- *   decision is taken on an overlap - see the loop below for why that matters.
+ *   decision is taken on an overlap OR on a `booking_id` match - see the loop below for why that
+ *   matters for both, not only for the overlap.
  * - A `ZoneOffsetError` from the scan is left to propagate rather than being treated as one more
  *   unparseable row. It means the zone itself is misconfigured, which fails every `Date`-typed row
  *   in the snapshot the same way - swallowing it would leave `hasOverlap` false by construction and
@@ -281,13 +296,17 @@ export function bookSlot(candidate: unknown, ports: BookSlotPorts): BookResult {
     // snapshot, so no two of them can disagree about what the sheet contained.
     const snapshot = ports.repo.loadBookingsSnapshot();
 
-    // The overlap verdict is deferred rather than returned the moment it is found, and the loop
-    // runs to the end even once an overlap is known. An unrelated row that overlaps the requested
-    // slot can sit BEFORE this request's own prior row in the snapshot - sheet order is whatever
-    // the owner's sorting left behind - and returning `slot_taken` on sight of the overlap would
-    // then reject a customer's retry of a booking they had already successfully made. The replay
-    // check must always be allowed to win, which is only true if the whole snapshot is scanned
-    // before the overlap flag is consulted.
+    // Every verdict the scan can reach is deferred until the scan finishes, and all three are
+    // decided together afterwards in a fixed priority order - replay, then id collision, then
+    // overlap. The snapshot can hold more than one row carrying this request's own `booking_id`
+    // (an owner's copy-pasted row, a row written before some earlier bug is fixed), or an
+    // unrelated overlapping row sitting before this request's own prior row - sheet order is
+    // whatever the owner's sorting left behind, never something this function may rely on. A full
+    // match found *anywhere* must win over an id-collision found *anywhere else*, which is only
+    // true if the scan never returns early on the first id match it meets; the same reasoning the
+    // overlap flag already needed applies here too, not only to it.
+    let replayMatch: BookingRow | undefined;
+    let hasIdCollision = false;
     let hasOverlap = false;
 
     for (const raw of snapshot) {
@@ -310,15 +329,18 @@ export function bookSlot(candidate: unknown, ports: BookSlotPorts): BookResult {
       }
 
       if (row.booking_id === request.booking_id) {
-        // The decisive case, answered here and nowhere else: this id is already the sheet's key for
-        // a row, so the only two possible answers are "that row is this booking" (replay) and
-        // "that row is a different booking" (the id is being reused, which is never allowed). No
-        // overlap finding, before or after, can change either answer, so this returns immediately.
-        return isSameBooking(request, verified.email, row)
-          ? requestedResponse(request)
-          : invalidRequest(
-              `Field 'booking_id' is already recorded against a different booking: ${request.booking_id}`
-            );
+        // This id is already the sheet's de-facto key for a row, so the only two possible answers
+        // for THIS row are "it is this booking" (replay) or "it is a different booking" (the id is
+        // being reused, never allowed) - but neither answer is returned yet, because a different
+        // row later in the same snapshot could still be the real replay match. A row carrying this
+        // id is never also a candidate for the overlap check below: it is either the booking
+        // itself or an anomaly, not an independent conflicting booking.
+        if (isSameBooking(request, verified.email, row)) {
+          replayMatch = row;
+        } else {
+          hasIdCollision = true;
+        }
+        continue;
       }
 
       if (row.status === 'cancelled') {
@@ -338,6 +360,16 @@ export function bookSlot(candidate: unknown, ports: BookSlotPorts): BookResult {
       }
     }
 
+    // Replay outranks everything: a request that already has a row is never told its own booking
+    // is unavailable, regardless of what else the same snapshot happens to contain.
+    if (replayMatch) {
+      return requestedResponse(request);
+    }
+    if (hasIdCollision) {
+      return invalidRequest(
+        `Field 'booking_id' is already recorded against a different booking: ${request.booking_id}`
+      );
+    }
     if (hasOverlap) {
       return {
         ok: false,
