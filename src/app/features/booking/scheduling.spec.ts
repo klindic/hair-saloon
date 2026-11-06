@@ -7,7 +7,6 @@ import {
   formatDateKey,
   formatNextOpenDayLabel,
   isDayOpen,
-  maxSearchDaysWithinWindow,
   parseDateKey,
   weekdayForDateKey,
 } from './scheduling';
@@ -143,6 +142,17 @@ describe('findNextOpenDay', () => {
     ].map((date) => ({ date, reason: 'test' }));
     expect(findNextOpenDay('2026-11-05', OPEN_ALL_WEEK, closures)).toBeNull();
   });
+
+  // Regression lock: an earlier fix bounded this search by how much of a day-picker's own
+  // 14-day display window was left from the selected date, so selecting the window's last
+  // visible day (reachable whenever that window started on a Monday, since day 14 then falls on
+  // the Sunday that closes it) returned null even though the salon is open the very next day.
+  // Criteria 6 and 7 say "within 14 days of the selected date" — nothing about what any UI
+  // happens to render — so this must always search the full window regardless of where the
+  // selected date sits relative to anything else on screen.
+  it('finds the very next day even when the caller has no display window left to show it in', () => {
+    expect(findNextOpenDay('2026-11-22', OPEN_ALL_WEEK, [])).toBe('2026-11-23');
+  });
 });
 
 describe('daysBetween', () => {
@@ -152,41 +162,6 @@ describe('daysBetween', () => {
 
   it('is zero for the same date', () => {
     expect(daysBetween('2026-11-05', '2026-11-05')).toBe(0);
-  });
-});
-
-describe('maxSearchDaysWithinWindow', () => {
-  it('allows a full search when the selected date is the start of the window', () => {
-    expect(maxSearchDaysWithinWindow('2026-11-05', '2026-11-05', 14)).toBe(13);
-  });
-
-  it('shrinks as the selected date approaches the end of the window', () => {
-    expect(maxSearchDaysWithinWindow('2026-11-05', '2026-11-18', 14)).toBe(0);
-  });
-
-  it('is zero, not negative, when the selected date sits exactly at the window edge', () => {
-    // 2026-11-09 is a Monday, so the day-picker's 14-day window starting there ends on
-    // 2026-11-22 — a Sunday, closed every week. Selecting it must leave no room to search.
-    expect(maxSearchDaysWithinWindow('2026-11-09', '2026-11-22', 14)).toBe(0);
-  });
-});
-
-describe('findNextOpenDay bounded by the day-picker window (regression: the Monday case)', () => {
-  it('returns null rather than a date past the window when the window-edge day is selected', () => {
-    // Reproduces the bug directly: without the bound, searching 14 fresh days forward from
-    // 2026-11-22 would reach 2026-11-23 (Monday, open) — a date the day-picker never rendered a
-    // button for, since its window (2026-11-09..2026-11-22) ends at the Sunday being selected.
-    const windowStart = '2026-11-09';
-    const selected = '2026-11-22';
-    const maxDays = maxSearchDaysWithinWindow(windowStart, selected, 14);
-    expect(findNextOpenDay(selected, OPEN_ALL_WEEK, [], maxDays)).toBeNull();
-  });
-
-  it('still finds a day within the window when there is room left to search', () => {
-    const windowStart = '2026-11-05';
-    const selected = '2026-11-08'; // the Sunday 3 days into the window; Monday is open and in range
-    const maxDays = maxSearchDaysWithinWindow(windowStart, selected, 14);
-    expect(findNextOpenDay(selected, OPEN_ALL_WEEK, [], maxDays)).toBe('2026-11-09');
   });
 });
 

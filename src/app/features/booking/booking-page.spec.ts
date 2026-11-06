@@ -193,32 +193,4 @@ describe('BookingPage', () => {
     expect(slotButton).not.toBeNull();
     expect(document.activeElement).toBe(slotButton);
   });
-
-  // Every 14-day window contains at least one Sunday, so there is always at least one closed day
-  // to exercise here regardless of which real day this suite happens to run on — the exact
-  // boundary (the window-edge day itself being the closed one) is covered deterministically with
-  // literal dates in scheduling.spec.ts, since it depends on `today`'s weekday and can't be forced
-  // through this component without controlling the real clock.
-  it("never follows a next-open-day link to a date outside the day-picker's own window", async () => {
-    const page = create();
-    const compiled = page.nativeElement as HTMLElement;
-    const buttons = dayPickerButtons(page);
-
-    for (const button of buttons) {
-      button.click();
-      await page.whenStable();
-
-      const nextOpenDayButton = compiled.querySelector<HTMLButtonElement>(
-        'app-day-unavailable-card button'
-      );
-      if (nextOpenDayButton === null) {
-        continue;
-      }
-
-      nextOpenDayButton.click();
-      await page.whenStable();
-
-      expect(compiled.querySelector('app-day-picker button[aria-pressed="true"]')).not.toBeNull();
-    }
-  });
 });
