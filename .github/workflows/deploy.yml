@@ -4,6 +4,14 @@ name: Deploy to GitHub Pages
 # nothing reaches Pages that has not been through the same gate as a pull request.
 # workflow_dispatch is kept for a manual re-deploy without a new commit.
 #
+# The `branches: [main]` filter below matters more than it looks: without it, every CI run on
+# every pull request branch also fires this workflow (CI runs on every branch), and every one of
+# those runs shares the single `pages` concurrency group below. With several PRs landing close
+# together, that queue of irrelevant triggers can starve out or cancel the one real deploy before
+# its job-level `if` even gets evaluated — which is exactly what happened the day two tickets
+# merged minutes apart and the real deploy for the second one never ran. Filtering at the trigger
+# means a PR branch's CI completion never enters the queue at all.
+#
 # The Pages base path lives in exactly one place: the `build:pages` script in package.json
 # (`--base-href /hair-saloon/`). It is not repeated here, so `npm run preview` locally serves the
 # same paths this job deploys.
@@ -16,6 +24,7 @@ on:
   workflow_run:
     workflows: [CI]
     types: [completed]
+    branches: [main]
   workflow_dispatch: {}
 
 permissions:

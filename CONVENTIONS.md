@@ -45,8 +45,9 @@ breakage the type checker on the other side will not catch until it is deployed.
 ## Tests
 
 Tests live beside the code they test, as `*.spec.ts` — `app.ts` / `app.spec.ts`,
-`config.service.ts` / `config.service.spec.ts`, `slots.ts` / `slots.spec.ts`. Apps Script domain
-tests (`apps-script/src/domain/**/*.spec.ts`) run under Vitest in plain Node via
+`config.service.ts` / `config.service.spec.ts`, `slots.ts` / `slots.spec.ts`. Everything under
+`apps-script/src/**/*.spec.ts` (domain logic in `apps-script/src/domain/`, plus standalone checks
+like `apps-script/src/manifest.spec.ts`) runs under Vitest in plain Node via
 `apps-script/vitest.config.mts` (`npm run test:script`); anything that touches an Apps Script
 global (`SpreadsheetApp`, `LockService`, `UrlFetchApp`) has no Node equivalent and cannot be unit
 tested this way — see `apps-script/README.md`.
@@ -58,6 +59,7 @@ Four engineers working in parallel need this to be a lookup, not a judgement cal
 - A routed page → `src/app/features/<name>/<name>-page.ts`. Features never import each other.
 - Something two features both need → `src/app/core/`. Core never imports a feature.
 - A wire shape, an error code, a sheet column → `shared/contract.ts`, and nowhere else.
+- A colour, space, radius or type size → `docs/design/tokens.md`, and nowhere else.
 - Salon data the slot grid needs (services, opening hours) → `src/data/`, compiled into the
   bundle. Changing it is a commit; see `src/data/README.md`.
 - Something fetched at runtime → `src/assets/`. Only `config.json` and demo fixtures belong there.
@@ -66,9 +68,9 @@ Four engineers working in parallel need this to be a lookup, not a judgement cal
 
 ## Before you open a pull request
 
-Run `npm run verify`. It is lint, format:check, typecheck, check:contract, unit tests, Apps Script
-tests, the Apps Script bundle and the build, and it is the same script CI runs — so a green
-`verify` locally and a green CI mean the same thing. `npm run verify:all` adds Playwright, which
+Run `npm run verify`. It is lint, format:check, typecheck, check:contract, check:contrast, unit tests,
+Apps Script tests, the Apps Script bundle and the build, and it is the same script CI runs — so a
+green `verify` locally and a green CI mean the same thing. `npm run verify:all` adds Playwright, which
 is worth it if you touched routing, the build or anything the browser loads.
 
 Do not claim a check passed that you did not watch pass. If something is broken and you are
